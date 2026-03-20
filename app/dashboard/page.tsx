@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCanvas } from '@/lib/canvas-context';
 import { DashboardNav } from '@/components/dashboard-nav';
@@ -18,7 +18,8 @@ import { Button } from '@/components/ui/button';
 import { AlertCircle } from 'lucide-react';
 import type { Course, Assignment, Submission, Announcement } from '@/lib/types';
 
-export default function DashboardPage() {
+// Extract the main logic into a separate component
+function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { connection } = useCanvas();
@@ -219,5 +220,14 @@ export default function DashboardPage() {
         </Tabs>
       </main>
     </div>
+  );
+}
+
+// Wrap the content in a Suspense boundary for the default export
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading dashboard...</div>}>
+      <DashboardContent />
+    </Suspense>
   );
 }
