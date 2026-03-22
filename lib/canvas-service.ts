@@ -139,17 +139,11 @@ export async function fetchCourses(connection: CanvasConnection): Promise<Course
     return courses
       .filter((course) => course.id != null)
       .filter((course) => {
-        // Filter out non-academic courses like advisory/meetings
-        const name = (course.name || '').toLowerCase();
-        if (/advisory|school meeting|homeroom|counseling/.test(name)) return false;
-        if (String(course.id) === '999') return false;
-        return true;
-      })
-      .filter((course) => {
         // If the course has term info, only include it if the term hasn't ended
         if (course.term?.end_at) {
           return new Date(course.term.end_at) >= today;
         }
+        // If no term info, include it (better to show too much than too little)
         return true;
       })
       .map((course) => ({
@@ -210,20 +204,6 @@ export async function fetchAssignments(courseId: string, connection: CanvasConne
         if (!a.due_at) return true;
         return new Date(a.due_at) >= semesterStart;
       })
-      .filter((a: any) => {
-        // Filter out assignments that don't require online submission
-        // These are in-person tests, attendance, etc. — they show as "missing" incorrectly
-        const types: string[] = a.submission_types || [];
-        const noSubmissionNeeded = types.every(t => 
-          t === 'none' || t === 'not_graded' || t === 'on_paper' || t === 'external_tool'
-        );
-        // Keep it only if it has a real submission or requires online work
-        if (noSubmissionNeeded) {
-          // Only keep if it actually has a grade (teacher graded it manually)
-          return a.submission?.score !== null && a.submission?.score !== undefined;
-        }
-        return true;
-      })
       .map((a: any) => ({
         id: a.id.toString(),
         courseId,
@@ -271,17 +251,6 @@ export async function fetchSubmissions(courseId: string, connection: CanvasConne
         if (!a.due_at) return true;
         return new Date(a.due_at) >= semStart;
       })
-      .filter((a: any) => {
-        // Same filter as fetchAssignments — skip on_paper/none/not_graded unless graded
-        const types: string[] = a.submission_types || [];
-        const noSubmissionNeeded = types.every((t: string) =>
-          t === 'none' || t === 'not_graded' || t === 'on_paper' || t === 'external_tool'
-        );
-        if (noSubmissionNeeded) {
-          return a.submission?.score !== null && a.submission?.score !== undefined;
-        }
-        return true;
-      })
       .map((a: any) => ({
         id: a.submission.id?.toString() || a.id.toString(),
         userId: a.submission.user_id?.toString() || '',
@@ -292,15 +261,15 @@ export async function fetchSubmissions(courseId: string, connection: CanvasConne
         submittedAt: a.submission.submitted_at || null,
         gradeedAt: a.submission.graded_at || null,
         late: a.submission.late || false,
-        // Don't trust Canvas missing flag for on_paper/none submissions — they're often wrong
+        // Don't mark as missing if already submitted/graded, or if no online submission needed
         missing: (() => {
           const types: string[] = a.submission_types || [];
-          const noOnlineNeeded = types.every((t: string) => 
+          const noOnlineNeeded = types.every((t: string) =>
             t === 'none' || t === 'not_graded' || t === 'on_paper'
           );
           if (noOnlineNeeded) return false;
-          // Also don't mark as missing if already submitted or graded
-          if (a.submission.workflow_state === 'submitted' || 
+          // Also don't mark missing if already submitted or graded
+          if (a.submission.workflow_state === 'submitted' ||
               a.submission.workflow_state === 'graded' ||
               a.submission.submitted_at) return false;
           return a.submission.missing || false;
@@ -344,7 +313,7 @@ export async function fetchAnnouncements(courseIds: string[], connection: Canvas
             message: item.message,
             postedAt: item.posted_at,
             author: {
-              id: (item.user_id || '').toString(),
+              id: item.user_id.toString(),
               name: item.user?.name || 'Professor',
             },
           });

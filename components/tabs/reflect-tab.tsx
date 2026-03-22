@@ -15,6 +15,7 @@ import {
   minutesToLabel
 } from '@/lib/gradeUtils';
 import { getAllEffortOverrides } from '@/lib/db-queries';
+import { HelpTip } from '@/components/help-tip';
 import type { Course, Assignment, Submission } from '@/lib/types';
 
 interface AnalyticsData {
@@ -56,8 +57,17 @@ export function ReflectTab({ courses, assignments, submissions, isLoading }: Ref
 
   return (
     <div className="space-y-8">
+      {/* Intro banner */}
+      <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 space-y-1">
+        <p className="text-sm font-medium">Your study patterns, in numbers</p>
+        <p className="text-xs text-muted-foreground">Analytics shows things Canvas never will — where you are losing points, how your grades are trending, and whether starting early actually improves your scores. All calculated from your real grade data.</p>
+      </div>
+
       <section>
-        <h2 className="text-lg font-semibold mb-4">Weekly Wrap</h2>
+        <div className="flex items-center gap-2 mb-4">
+          <h2 className="text-lg font-semibold">Weekly Wrap</h2>
+          <HelpTip text="Six cards calculated from your real Canvas data — what's due this week, where your grades are trending, how submitting early vs late affects your scores, and what small assignments you're losing points on. All real numbers, nothing made up." />
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <GradeRiskCard data={data} />
           <ProjectedFinalsCard data={data} />
@@ -69,7 +79,10 @@ export function ReflectTab({ courses, assignments, submissions, isLoading }: Ref
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold mb-4">Monthly Wrap</h2>
+        <div className="flex items-center gap-2 mb-4">
+          <h2 className="text-lg font-semibold">Monthly Wrap</h2>
+          <HelpTip text="Bigger picture analytics for the semester — your grade in every course over time, submission habits (early vs on-time vs late), where you lost points, and your grade trajectory as a line chart. Tap courses on the trajectory chart to show or hide them." />
+        </div>
         <div className="space-y-4">
           <SemesterSnapshotCard data={data} />
           <SubmissionPatternsCard data={data} />
@@ -79,7 +92,10 @@ export function ReflectTab({ courses, assignments, submissions, isLoading }: Ref
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold mb-4">Effort Calibration</h2>
+        <div className="flex items-center gap-2 mb-4">
+          <h2 className="text-lg font-semibold">Effort Calibration</h2>
+          <HelpTip text="Shows every assignment where you set an effort estimate in the Priority Queue, alongside your actual score. Helps you see if your time estimates are accurate — if you're estimating 1 hour but scoring 60%, you're either underestimating the work or not using the time well." />
+        </div>
         <EffortCalibrationCard data={data} effortOverrides={effortOverrides} />
       </section>
     </div>
@@ -179,7 +195,7 @@ function ProjectedFinalsCard({ data }: { data: AnalyticsData }) {
         <div className="mt-2 space-y-1">
           {projections.slice(0, 4).map(p => (
             <div key={p.course.id} className="flex items-center justify-between text-xs">
-              <span className="truncate">{p.course.name.split(':')[0].replace(/AP |IB /gi,'').trim().slice(0,15)}</span>
+              <span className="truncate">{p.course.code}</span>
               <span className={getGradeColor(p.projected ?? p.current)}>
                 {p.current !== null ? `${p.current}%` : '--'} 
                 {p.projected && p.projected !== p.current && (
@@ -330,8 +346,7 @@ function WorkloadForecastCard({ data }: { data: AnalyticsData }) {
         !sub?.submittedAt;
     })
     .forEach(a => {
-      const dueDate = new Date(a.dueDate!);
-      const dayKey = dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const dayKey = new Date(a.dueDate!).toLocaleDateString('en-US', { weekday: 'short' });
       const estimatedHours = a.pointsPossible > 50 ? 3 : a.pointsPossible > 20 ? 2 : 1;
       upcomingByDay[dayKey] = (upcomingByDay[dayKey] || 0) + estimatedHours;
     });
@@ -446,7 +461,7 @@ function MomentumCard({ data }: { data: AnalyticsData }) {
         <div className="mt-2 space-y-1">
           {trends.slice(0, 4).map(t => (
             <div key={t.course.id} className="flex items-center justify-between text-xs">
-              <span className="truncate max-w-[80px]">{t.course.name.split(':')[0].replace(/AP |IB /gi,'').trim()}</span>
+              <span>{t.course.code}</span>
               <span className="flex items-center gap-1">
                 {t.trend === 'up' && <TrendingUp className="h-3 w-3 text-[oklch(var(--grade-safe))]" />}
                 {t.trend === 'down' && <TrendingDown className="h-3 w-3 text-[oklch(var(--grade-danger))]" />}
@@ -487,7 +502,7 @@ function SemesterSnapshotCard({ data }: { data: AnalyticsData }) {
                   className="w-3 h-3 rounded-full"
                   style={{ backgroundColor: courseColor(course.id) }}
                 />
-                <span className="text-sm font-medium truncate max-w-[120px]">{course.name.replace(/^(AP|IB|Honors) /i, '').split(':')[0].trim()}</span>
+                <span className="text-sm font-medium">{course.code}</span>
                 <span className={`text-lg font-bold ${getGradeColor(course.currentGrade)}`} data-grade>
                   {course.currentGrade !== null ? `${course.currentGrade}%` : '--'}
                 </span>
@@ -690,61 +705,56 @@ function PointsLostCard({ data }: { data: AnalyticsData }) {
 }
 
 function GradeTrajectoryCard({ data }: { data: AnalyticsData }) {
-  // Use short course name (first word or acronym) as key to avoid number codes
+  const [selectedCourseIds, setSelectedCourseIds] = useState<Set<string>>(
+    new Set(data.courses.map(c => c.id))
+  );
+
   const getShortName = (course: Course) => {
-    // e.g. "AP Calculus AB" -> "Calc AB", "Arabic Lingual..." -> "Arabic"
-    const words = course.name.replace(/^(AP|IB|Honors)\s+/i, '').split(' ');
-    return words.slice(0, 2).join(' ');
+    const name = course.name;
+    const afterColon = name.includes(':') ? name.split(':').slice(1).join(':').trim() : name;
+    const stripped = afterColon.replace(/^(AP|IB|Honors|Accelerated) /i, '').trim();
+    return stripped.split(' ').slice(0, 2).join(' ');
   };
 
-  const courseLines = data.courses.map(course => {
-    const courseSubmissions = data.submissions
-      .filter(s => s.courseId === course.id && s.submittedAt && s.score !== null)
-      .sort((a, b) => new Date(a.submittedAt!).getTime() - new Date(b.submittedAt!).getTime());
+  const toggleCourse = (id: string) => {
+    setSelectedCourseIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        if (next.size > 1) next.delete(id); // keep at least 1
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
-    if (courseSubmissions.length < 2) return null;
+  const courseLines = data.courses
+    .filter(course => selectedCourseIds.has(course.id))
+    .map(course => {
+      const courseSubmissions = data.submissions
+        .filter(s => s.courseId === course.id && s.submittedAt && s.score !== null)
+        .sort((a, b) => new Date(a.submittedAt!).getTime() - new Date(b.submittedAt!).getTime());
 
-    let cumEarned = 0;
-    let cumPossible = 0;
+      if (courseSubmissions.length < 2) return null;
 
-    const points = courseSubmissions.map(s => {
-      const assignment = data.assignments.find(a => a.id === s.assignmentId);
-      const pts = assignment?.pointsPossible || 0;
-      if (pts === 0) return null; // skip zero-point assignments — they skew to 100%
-      cumEarned += s.score!;
-      cumPossible += pts;
-      return {
-        date: new Date(s.submittedAt!).getTime(),
-        grade: cumPossible > 0 ? Math.round((cumEarned / cumPossible) * 100) : null,
-      };
-    }).filter((p): p is { date: number; grade: number } => p !== null && p.grade !== null);
+      let cumEarned = 0;
+      let cumPossible = 0;
+      const points = courseSubmissions.map(s => {
+        const assignment = data.assignments.find(a => a.id === s.assignmentId);
+        const pts = assignment?.pointsPossible || 0;
+        if (pts === 0) return null;
+        cumEarned += s.score!;
+        cumPossible += pts;
+        return {
+          date: new Date(s.submittedAt!).getTime(),
+          grade: cumPossible > 0 ? Math.round((cumEarned / cumPossible) * 100) : null,
+        };
+      }).filter((p): p is { date: number; grade: number } => p !== null && p.grade !== null);
 
-    if (points.length < 2) return null;
+      if (points.length < 2) return null;
+      return { course, shortName: getShortName(course), points, color: courseColor(course.id) };
+    }).filter(Boolean) as { course: Course; shortName: string; points: { date: number; grade: number }[]; color: string }[];
 
-    return {
-      course,
-      shortName: getShortName(course),
-      points,
-      color: courseColor(course.id),
-    };
-  }).filter(Boolean) as { course: Course; shortName: string; points: { date: number; grade: number }[]; color: string }[];
-
-  if (courseLines.length === 0) {
-    return (
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">Grade Trajectory</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground text-sm">
-            Not enough graded submissions yet to show trajectory
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // Build chart data with real dates on x-axis
   const allDates = [...new Set(courseLines.flatMap(c => c.points.map(p => p.date)))].sort();
   const chartData = allDates.map(date => {
     const point: Record<string, number | string> = {
@@ -752,84 +762,86 @@ function GradeTrajectoryCard({ data }: { data: AnalyticsData }) {
       label: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     };
     courseLines.forEach(line => {
-      // Find the most recent grade up to this date
       const match = [...line.points].reverse().find(p => p.date <= date);
       if (match) point[line.shortName] = match.grade;
     });
     return point;
   });
 
-  // Find grade range for y-axis
   const allGrades = courseLines.flatMap(l => l.points.map(p => p.grade));
-  const minGrade = Math.max(0, Math.floor(Math.min(...allGrades) / 10) * 10 - 5);
-  const maxGrade = 100;
+  const minGrade = allGrades.length > 0 ? Math.max(0, Math.floor(Math.min(...allGrades) / 10) * 10 - 5) : 0;
 
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium">Grade Trajectory</CardTitle>
-        <p className="text-xs text-muted-foreground">Running grade per course over the semester</p>
+        <p className="text-xs text-muted-foreground">Running grade per course — tap to show/hide</p>
       </CardHeader>
-      <CardContent>
-        <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-              <XAxis
-                dataKey="label"
-                tick={{ fontSize: 9, fill: '#888' }}
-                interval="preserveStartEnd"
-                tickCount={6}
-              />
-              <YAxis
-                domain={[minGrade, maxGrade]}
-                tick={{ fontSize: 10, fill: '#888' }}
-                tickFormatter={v => `${v}%`}
-                width={35}
-              />
-              <Tooltip
-                content={({ active, payload, label }) => {
-                  if (active && payload && payload.length) {
-                    return (
-                      <div className="bg-popover border border-border rounded-lg p-2 shadow-lg text-xs space-y-1">
-                        <p className="font-medium text-muted-foreground">{label}</p>
-                        {payload.map((p, i) => (
-                          <p key={i} style={{ color: p.color as string }}>
-                            {p.name}: {p.value}%
-                          </p>
-                        ))}
-                      </div>
-                    );
-                  }
-                  return null;
-                }}
-              />
-              {courseLines.map(line => (
-                <Line
-                  key={line.course.id}
-                  type="monotone"
-                  dataKey={line.shortName}
-                  stroke={line.color}
-                  strokeWidth={2}
-                  dot={{ r: 2, strokeWidth: 0, fill: line.color }}
-                  connectNulls
-                />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
+      <CardContent className="space-y-3">
+        {/* Course selector */}
+        <div className="flex flex-wrap gap-2">
+          {data.courses.map(course => {
+            const isSelected = selectedCourseIds.has(course.id);
+            const color = courseColor(course.id);
+            return (
+              <button
+                key={course.id}
+                onClick={() => toggleCourse(course.id)}
+                className={`text-xs px-2 py-1 rounded-full border cursor-pointer transition-all ${
+                  isSelected ? 'border-transparent text-white' : 'border-border text-muted-foreground bg-transparent'
+                }`}
+                style={isSelected ? { backgroundColor: color } : {}}
+              >
+                {getShortName(course)}
+              </button>
+            );
+          })}
         </div>
-        <div className="flex flex-wrap gap-3 mt-2">
-          {courseLines.map(line => (
-            <div key={line.course.id} className="flex items-center gap-1.5 text-xs">
-              <div className="w-3 h-1 rounded" style={{ backgroundColor: line.color }} />
-              <span>{line.shortName}</span>
+
+        {courseLines.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">Not enough graded submissions yet</p>
+        ) : (
+          <>
+            <div className="h-52">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                  <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#888" }} interval="preserveStartEnd" tickCount={6} />
+                  <YAxis domain={[minGrade, 100]} tick={{ fontSize: 10, fill: "#888" }} tickFormatter={v => `${v}%`} width={35} />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        return (
+                          <div className="bg-popover border border-border rounded-lg p-2 shadow-lg text-xs space-y-1">
+                            <p className="font-medium text-muted-foreground">{label}</p>
+                            {payload.map((p, i) => (
+                              <p key={i} style={{ color: p.color as string }}>{p.name}: {p.value}%</p>
+                            ))}
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  {courseLines.map(line => (
+                    <Line
+                      key={line.course.id}
+                      type="monotone"
+                      dataKey={line.shortName}
+                      stroke={line.color}
+                      strokeWidth={2}
+                      dot={{ r: 2, strokeWidth: 0, fill: line.color }}
+                      connectNulls
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
             </div>
-          ))}
-        </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );
 }
-
 // ============ Effort Calibration ============
 
 function EffortCalibrationCard({

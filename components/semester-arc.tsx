@@ -112,27 +112,13 @@ export function SemesterArc({ assignments, submissions, isLoading }: SemesterArc
   const tickFormatter = (value: number) =>
     new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-  // Find the min/max grade to set a sensible y domain
-  const allGrades = chartData
-    .flatMap(d => [d.actual, d.projected])
-    .filter((v): v is number => v !== undefined);
-  const minGrade = Math.max(0, Math.floor(Math.min(...allGrades) / 10) * 10 - 10);
-  const maxGrade = Math.min(100, Math.ceil(Math.max(...allGrades) / 10) * 10 + 5);
-
   return (
     <Card>
       <CardHeader className="pb-2">
-        <div className="flex items-start justify-between">
-          <div>
-            <CardTitle className="text-sm font-medium">Grade Trajectory</CardTitle>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Your running grade over the semester — blue line is real, dashed is projected final
-            </p>
-          </div>
-        </div>
+        <CardTitle className="text-sm font-medium">Grade Trajectory</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="h-52">
+        <div className="h-48">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
               <XAxis
@@ -140,15 +126,13 @@ export function SemesterArc({ assignments, submissions, isLoading }: SemesterArc
                 type="number"
                 scale="time"
                 domain={['dataMin', 'dataMax']}
-                tick={{ fontSize: 10, fill: '#888' }}
+                tick={{ fontSize: 10 }}
                 tickFormatter={tickFormatter}
-                tickCount={5}
               />
               <YAxis
-                domain={[minGrade, maxGrade]}
-                tick={{ fontSize: 10, fill: '#888' }}
+                domain={[50, 100]}
+                tick={{ fontSize: 10 }}
                 tickFormatter={(value) => `${value}%`}
-                width={35}
               />
               <Tooltip
                 content={({ active, payload }) => {
@@ -156,19 +140,12 @@ export function SemesterArc({ assignments, submissions, isLoading }: SemesterArc
                     const data = payload[0].payload;
                     return (
                       <div className="bg-popover border border-border rounded-lg p-2 shadow-lg text-xs">
-                        <p className="font-medium mb-1">
-                          {data.name === 'Today' || data.name === 'End of Semester'
-                            ? data.name
-                            : new Date(data.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        </p>
+                        <p className="font-medium">{data.name}</p>
                         {data.actual !== undefined && (
-                          <p style={{ color: '#3b82f6' }}>Grade: {data.actual}%</p>
+                          <p className="text-muted-foreground">Actual: {data.actual}%</p>
                         )}
-                        {data.projected !== undefined && data.name !== 'Today' && (
-                          <p style={{ color: '#888' }}>Projected: {data.projected}%</p>
-                        )}
-                        {data.name && data.name !== 'Today' && data.name !== 'End of Semester' && (
-                          <p className="text-muted-foreground mt-1 truncate max-w-[160px]">{data.name}</p>
+                        {data.projected !== undefined && (
+                          <p className="text-muted-foreground">Projected: {data.projected}%</p>
                         )}
                       </div>
                     );
@@ -176,28 +153,25 @@ export function SemesterArc({ assignments, submissions, isLoading }: SemesterArc
                   return null;
                 }}
               />
-              <ReferenceLine y={90} stroke="#22c55e" strokeDasharray="3 3" strokeOpacity={0.5} />
-              <ReferenceLine y={80} stroke="#f59e0b" strokeDasharray="3 3" strokeOpacity={0.5} />
-              <ReferenceLine y={70} stroke="#ef4444" strokeDasharray="3 3" strokeOpacity={0.5} />
+              <ReferenceLine y={90} stroke="hsl(142, 71%, 45%)" strokeDasharray="3 3" />
+              <ReferenceLine y={80} stroke="hsl(38, 92%, 50%)" strokeDasharray="3 3" />
+              <ReferenceLine y={70} stroke="hsl(0, 84%, 60%)" strokeDasharray="3 3" />
               <Line
                 type="monotone"
                 dataKey="actual"
-                stroke="#3b82f6"
-                strokeWidth={2.5}
-                dot={{ r: 3, fill: '#3b82f6', strokeWidth: 0 }}
-                activeDot={{ r: 5 }}
+                stroke="hsl(221, 83%, 53%)"
+                strokeWidth={2}
+                dot={{ r: 3, fill: "hsl(221, 83%, 53%)" }}
                 connectNulls
-                name="Grade"
               />
               <Line
                 type="monotone"
                 dataKey="projected"
-                stroke="#888"
+                stroke="hsl(215, 16%, 55%)"
                 strokeWidth={2}
                 strokeDasharray="5 5"
                 dot={false}
                 connectNulls
-                name="Projected"
               />
             </LineChart>
           </ResponsiveContainer>
@@ -206,12 +180,12 @@ export function SemesterArc({ assignments, submissions, isLoading }: SemesterArc
         {/* Legend */}
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <div className="flex items-center gap-1.5">
-            <div className="w-5 h-0.5 rounded" style={{ backgroundColor: '#3b82f6' }} />
-            <span>Your grade over time</span>
+            <div className="w-6 h-0.5 bg-foreground" />
+            <span>Actual grade</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="w-5 h-0 border-t-2 border-dashed" style={{ borderColor: '#888' }} />
-            <span>Where you will finish</span>
+            <div className="w-6 h-0.5 border-t-2 border-dashed border-muted-foreground" />
+            <span>Projected final</span>
           </div>
         </div>
       </CardContent>

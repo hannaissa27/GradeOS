@@ -108,36 +108,29 @@ export function ScheduleTab({
     startTime.setHours(hour, 0, 0, 0);
     const effortMinutes = effortOverrides.get(draggedAssignment.id) ?? 60;
     const endTime = new Date(startTime.getTime() + effortMinutes * 60 * 1000);
-    
-    // Optimistic local block — shows immediately regardless of Supabase
-    const localBlock: TimeBlock = {
-      id: `local-${Date.now()}`,
-      assignmentId: draggedAssignment.id,
-      courseId: draggedAssignment.courseId,
-      startTime: startTime.toISOString(),
-      endTime: endTime.toISOString(),
-      createdAt: new Date().toISOString(),
-    };
-    setTimeBlocks(prev => [...prev, localBlock]);
-    setDropError(null);
-    
-    // Try to persist to Supabase in background
     try {
-      const savedBlock = await createTimeBlock(draggedAssignment.id, draggedAssignment.courseId, startTime, endTime);
-      // Replace local block with saved one
-      setTimeBlocks(prev => prev.map(b => b.id === localBlock.id ? savedBlock : b));
+      const newBlock = await createTimeBlock(draggedAssignment.id, draggedAssignment.courseId, startTime, endTime);
+      setTimeBlocks(prev => [...prev, newBlock]);
+      setDropError(null);
     } catch (e: any) {
-      console.warn('[GradeOS] Could not persist time block to Supabase, keeping locally:', e);
-      // Keep the local block — it shows fine for this session
+      console.error('[GradeOS] createTimeBlock failed:', e);
+      setDropError('Could not save time block. Check Supabase connection.');
+      setTimeout(() => setDropError(null), 4000);
     }
     setDraggedAssignment(null);
   };
 
   const handleDeleteBlock = async (blockId: string) => {
-    try {
-      await deleteTimeBlock(blockId);
-      setTimeBlocks(prev => prev.filter(b => b.id !== blockId));
-    } catch {}
+    // Remove from UI immediately
+    setTimeBlocks(prev => prev.filter(b => b.id !== blockId));
+    // Only try Supabase delete for non-local blocks
+    if (!blockId.startsWith('local-')) {
+      try {
+        await deleteTimeBlock(blockId);
+      } catch (e) {
+        console.warn('Could not delete from Supabase:', e);
+      }
+    }
   };
 
   const getBlocksForSlot = (dayIndex: number, hour: number) => {
@@ -149,6 +142,9 @@ export function ScheduleTab({
       return blockStart >= slotStart && blockStart < slotEnd;
     });
   };
+
+  const pendingCount = pendingAssignments.length;
+  const pinnedCount = pinnedIds.size;
 
   if (isLoading || blocksLoading) {
     return (
@@ -163,13 +159,25 @@ export function ScheduleTab({
   }
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-200px)]">
+    <div className="space-y-3">
+      {/* How to use explainer */}
+      <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 space-y-1">
+        <p className="text-sm font-medium">How to use My Week</p>
+        <div className="text-xs text-muted-foreground space-y-0.5">
+          <p><span className="font-medium text-foreground">Step 1</span> — Pin assignments from the list on the left using the pin icon.</p>
+          <p><span className="font-medium text-foreground">Step 2</span> — Drag pinned assignments onto the calendar to plan study sessions.</p>
+          <p><span className="font-medium text-foreground">Step 3</span> — Click any block on the calendar to remove it.</p>
+        </div>
+      </div>
+
+    <div className="flex gap-4 h-[calc(100vh-240px)]">
       {/* Left sidebar */}
       <div className="w-64 flex-shrink-0 overflow-y-auto space-y-4">
 
         {/* Pinned to schedule */}
         <div>
-          <h3 className="font-semibold text-sm mb-2">My Schedule List</h3>
+          <h3 className="font-semibold text-sm mb-1">My Schedule List</h3>
+          <p className="text-xs text-muted-foreground mb-2">Drag these onto the calendar →</p>
           {pinnedAssignments.length === 0 ? (
             <p className="text-xs text-muted-foreground py-3 text-center border border-dashed border-border rounded-lg">
               Pin assignments below to add them here, then drag to calendar
@@ -329,6 +337,7 @@ export function ScheduleTab({
           ))}
         </div>
       </div>
+    </div>
     </div>
   );
 }

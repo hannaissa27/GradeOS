@@ -14,7 +14,8 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { Slider } from '@/components/ui/slider';
-import { ArrowLeft, Check, Sparkles, AlertCircle, ChevronDown, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Check, Sparkles, AlertCircle, ChevronDown, Zap, Loader2, Clock } from 'lucide-react';
+import { HelpTip } from '@/components/help-tip';
 import {
   courseColor,
   getGradeColor,
@@ -24,7 +25,7 @@ import {
   getAssignmentTypeBadge,
   computeProjectedGrade,
 } from '@/lib/gradeUtils';
-import { hasAIKey, chunkAssignment } from '@/lib/aiUtils';
+import { hasAIKey, callClaude } from '@/lib/aiUtils';
 import { SemesterArc } from '@/components/semester-arc';
 import type { Course, Assignment, Submission } from '@/lib/types';
 
@@ -61,6 +62,14 @@ export function PlanTab({
 
   const now = new Date();
 
+  // Missing: explicitly flagged as missing by Canvas
+  const missingAssignments = useMemo(() => {
+    return assignments.filter((a) => {
+      const submission = submissions.find((s) => s.assignmentId === a.id);
+      return submission?.missing && !submission?.excused;
+    });
+  }, [assignments, submissions]);
+
   // Upcoming: due in future or no due date, and not graded/submitted
   const upcomingAssignments = useMemo(() => {
     return assignments.filter((a) => {
@@ -87,7 +96,10 @@ export function PlanTab({
   if (!selectedCourseId) {
     return (
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold">Courses</h2>
+        <div>
+          <h2 className="text-lg font-semibold">My Courses</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Click any course to see your grade, assignments, and what you need to hit your target.</p>
+        </div>
         {isLoading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
@@ -106,36 +118,38 @@ export function PlanTab({
               return (
                 <button
                   key={course.id}
-                  className="text-left w-full rounded-xl border border-border bg-card hover:bg-accent/40 transition-colors cursor-pointer p-4 group"
+                  className="text-left w-full rounded-xl border border-border bg-card hover:bg-accent/20 transition-all cursor-pointer p-4 group"
                   onClick={() => onSelectCourse(course.id)}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: courseColor(course.id) }} />
-                      <div className="min-w-0">
-                        <p className="font-medium text-sm truncate leading-tight">{course.name.includes(':') ? course.name.split(':').slice(1).join(':').trim().replace(/^(AP|IB|Honors|Accelerated) /i,'').trim() : course.name}</p>
-                      </div>
-                    </div>
-                    <div className="text-right flex-shrink-0">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: courseColor(course.id) }} />
+                    <p className="font-semibold text-sm truncate">
+                      {course.name.includes(':') ? course.name.split(':').slice(1).join(':').trim().replace(/^(AP|IB|Honors|Accelerated) /i,'').trim() : course.name}
+                    </p>
+                  </div>
+                  <div className="flex items-end justify-between mb-3">
+                    <div>
                       {course.currentGrade !== null ? (
                         <>
-                          <p className={`text-xl font-bold grade-value ${getGradeColor(course.currentGrade)}`} data-grade="true">
-                            {course.currentGrade}%
-                          </p>
-                          <p className={`text-xs ${getGradeColor(course.currentGrade)}`}>
-                            {gradeToLetter(course.currentGrade)}
-                          </p>
+                          <p className={`text-3xl font-bold grade-value leading-none ${getGradeColor(course.currentGrade)}`} data-grade="true">{course.currentGrade}%</p>
+                          <p className={`text-xs mt-0.5 ${getGradeColor(course.currentGrade)}`}>{gradeToLetter(course.currentGrade)} grade</p>
                         </>
                       ) : (
-                        <p className="text-xl font-bold text-muted-foreground">N/A</p>
+                        <p className="text-3xl font-bold text-muted-foreground">N/A</p>
                       )}
                     </div>
+                    <p className="text-xs text-muted-foreground group-hover:text-primary transition-colors">Open →</p>
                   </div>
-                  {pending.length > 0 && (
-                    <p className="text-xs text-muted-foreground mt-2.5">
-                      {pending.length} assignment{pending.length !== 1 ? 's' : ''} due soon
-                    </p>
-                  )}
+                  <div className="text-xs space-y-0.5">
+                    {pending.length > 0 ? (
+                      <p className="text-muted-foreground"><span className="font-medium text-foreground">{pending.length}</span> upcoming</p>
+                    ) : (
+                      <p className="text-green-600 dark:text-green-400">Nothing due soon</p>
+                    )}
+                    {courseSubmissions.filter(s => s.missing).length > 0 && (
+                      <p className="text-red-500 font-medium">{courseSubmissions.filter(s => s.missing).length} missing</p>
+                    )}
+                  </div>
                 </button>
               );
             })}
@@ -162,8 +176,11 @@ export function PlanTab({
           style={{ backgroundColor: courseColor(selectedCourseId) }}
         />
         <div className="flex-1 min-w-0">
-          <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">{selectedCourse?.code}</p>
-          <h1 className="text-lg font-semibold leading-tight truncate">{selectedCourse?.name}</h1>
+          <p className="text-xs text-muted-foreground">
+            {selectedCourse?.name?.includes(':')
+              ? selectedCourse.name.split(':').slice(1).join(':').trim().replace(/^(AP|IB|Honors|Accelerated) /i,'').trim()
+              : selectedCourse?.name}
+          </p>
         </div>
         <div className="text-right flex-shrink-0">
           {selectedCourse?.currentGrade !== null ? (
@@ -187,6 +204,19 @@ export function PlanTab({
           )}
         </div>
       </div>
+
+      {/* Missing assignments alert */}
+      {missingAssignments.length > 0 && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 space-y-1.5">
+          <p className="text-xs font-medium text-red-500">{missingAssignments.length} missing assignment{missingAssignments.length !== 1 ? 's' : ''}</p>
+          {missingAssignments.map(a => (
+            <div key={a.id} className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground truncate flex-1">{a.name}</span>
+              <span className="text-muted-foreground ml-2 flex-shrink-0">{a.pointsPossible} pts · {formatDueDate(a.dueDate)}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Grade Trajectory */}
       <SemesterArc assignments={assignments} submissions={submissions} isLoading={isLoading} />
@@ -315,6 +345,10 @@ function AssignmentList({ assignments, submissions, expandedAssignment, onExpand
                   </Badge>
                 )}
                 {submission?.missing && <Badge variant="destructive">Missing</Badge>}
+                {/* First Move button — only on unsubmitted */}
+                {!submission?.submittedAt && (submission?.score === null || submission?.score === undefined) && (
+                  <FirstMoveButton assignment={assignment} />
+                )}
               </div>
             </AccordionTrigger>
             <AccordionContent>
@@ -344,22 +378,34 @@ function WhatIfCalculator({
   allAssignments,
   allSubmissions,
 }: WhatIfCalculatorProps) {
-  const [hypotheticalScores, setHypotheticalScores] = useState<Record<string, number | null>>({});
+  const [hypotheticalScores, setHypotheticalScores] = useState<Record<string, number>>({});
 
+  // All assignments with points
   const eligibleAssignments = allAssignments.filter(a => a.pointsPossible > 0);
 
+  // Split into graded and ungraded
+  const gradedAssignments = eligibleAssignments.filter(a => {
+    const sub = allSubmissions.find(s => s.assignmentId === a.id);
+    return sub?.score !== null && sub?.score !== undefined;
+  });
+  const ungradedAssignments = eligibleAssignments.filter(a => {
+    const sub = allSubmissions.find(s => s.assignmentId === a.id);
+    return sub?.score === null || sub?.score === undefined;
+  });
+
+  // Projected grade using hypothetical overrides
   const projectedGrade = useMemo(() => {
     let totalEarned = 0;
     let totalPossible = 0;
     for (const a of eligibleAssignments) {
       if (!a.pointsPossible) continue;
       const hypo = hypotheticalScores[a.id];
-      if (hypo !== null && hypo !== undefined) {
+      if (hypo !== undefined) {
         totalEarned += Math.min(hypo, a.pointsPossible);
         totalPossible += a.pointsPossible;
       } else {
         const sub = allSubmissions.find(s => s.assignmentId === a.id);
-        const score = sub?.score ?? (a as any).submissionScore ?? null;
+        const score = sub?.score ?? null;
         if (score !== null) {
           totalEarned += score;
           totalPossible += a.pointsPossible;
@@ -374,17 +420,7 @@ function WhatIfCalculator({
     ? Math.round((projectedGrade - currentGrade) * 10) / 10
     : null;
 
-  const hasAnyHypothetical = Object.values(hypotheticalScores).some(v => v !== null && v !== undefined);
-  const handleReset = () => setHypotheticalScores({});
-
-  const unsubmitted = eligibleAssignments.filter(a => {
-    const sub = allSubmissions.find(s => s.assignmentId === a.id);
-    return !sub?.submittedAt && (sub?.score === null || sub?.score === undefined);
-  });
-  const completed = eligibleAssignments.filter(a => {
-    const sub = allSubmissions.find(s => s.assignmentId === a.id);
-    return sub?.score !== null && sub?.score !== undefined;
-  });
+  const hasAny = Object.keys(hypotheticalScores).length > 0;
 
   if (eligibleAssignments.length === 0) return null;
 
@@ -392,35 +428,40 @@ function WhatIfCalculator({
     <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium">What-If Calculator</CardTitle>
-          {hasAnyHypothetical && (
-            <Button variant="ghost" size="sm" onClick={handleReset} className="h-7 text-xs">
-              <RotateCcw className="w-3 h-3 mr-1" />Reset all
-            </Button>
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-sm font-medium">Grade Simulator</CardTitle>
+            <HelpTip text="Drag a slider on any upcoming assignment to see what your course grade would be if you scored that. Drag completed assignments to override your real score — useful for 'what if I had gotten an A on that test?' The projected grade updates live as you drag." />
+          </div>
+          {hasAny && (
+            <button onClick={() => setHypotheticalScores({})} className="text-xs text-muted-foreground hover:text-foreground cursor-pointer">
+              Reset all
+            </button>
           )}
         </div>
+        <p className="text-xs text-muted-foreground">Drag any slider to see how it affects your grade</p>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex items-center gap-6 text-sm p-3 bg-muted/50 rounded-lg sticky top-0 z-10">
+        {/* Grade summary bar */}
+        <div className="flex items-center gap-4 p-3 bg-muted/40 rounded-lg">
           <div>
             <p className="text-xs text-muted-foreground">Current</p>
-            <p className={`text-xl font-bold grade-value ${getGradeColor(currentGrade)}`} data-grade="true">
+            <p className={`text-lg font-bold grade-value ${getGradeColor(currentGrade)}`} data-grade="true">
               {currentGrade !== null ? `${currentGrade}%` : "N/A"}
             </p>
           </div>
           {projectedGrade !== null && (
             <>
-              <div className="text-muted-foreground text-lg">&rarr;</div>
+              <div className="text-muted-foreground">→</div>
               <div>
-                <p className="text-xs text-muted-foreground">What-If</p>
-                <p className={`text-xl font-bold grade-value ${getGradeColor(projectedGrade)}`} data-grade="true">
+                <p className="text-xs text-muted-foreground">Projected</p>
+                <p className={`text-lg font-bold grade-value ${getGradeColor(projectedGrade)}`} data-grade="true">
                   {projectedGrade}%
                 </p>
               </div>
               {delta !== null && (
                 <div>
-                  <p className="text-xs text-muted-foreground">Delta</p>
-                  <p className={`text-xl font-bold ${delta >= 0 ? "text-green-500" : "text-red-500"}`}>
+                  <p className="text-xs text-muted-foreground">Change</p>
+                  <p className={`text-lg font-bold ${delta >= 0 ? "text-green-500" : "text-red-500"}`}>
                     {delta >= 0 ? "+" : ""}{delta}%
                   </p>
                 </div>
@@ -429,40 +470,47 @@ function WhatIfCalculator({
           )}
         </div>
 
-        {unsubmitted.length > 0 && (
+        {/* Upcoming assignments */}
+        {ungradedAssignments.length > 0 && (
           <div className="space-y-3">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Upcoming</p>
-            {unsubmitted.map((a) => {
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Upcoming — what if I score...</p>
+            {ungradedAssignments.map((a) => {
               const value = hypotheticalScores[a.id];
+              const pct = value !== undefined ? Math.round((value / a.pointsPossible) * 100) : null;
               return (
-                <div key={a.id} className="space-y-1.5">
+                <div key={a.id} className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium truncate flex-1 mr-2">{a.name}</p>
-                    <span className="text-xs font-mono text-muted-foreground flex-shrink-0">
-                      {value !== null && value !== undefined ? value : "--"} / {a.pointsPossible} pts
+                    <p className="text-sm truncate flex-1 mr-2">{a.name}</p>
+                    <span className="text-xs text-muted-foreground flex-shrink-0">
+                      {value !== undefined ? `${value} / ${a.pointsPossible} pts` : `-- / ${a.pointsPossible} pts`}
+                      {pct !== null && <span className="ml-1 text-muted-foreground">({pct}%)</span>}
                     </span>
                   </div>
-                  <Slider min={0} max={a.pointsPossible} step={1}
-                    value={[value !== null && value !== undefined ? value : 0]}
-                    onValueChange={([v]) => setHypotheticalScores(prev => ({ ...prev, [a.id]: v }))}
-                    className="w-full" />
+                  <Slider
+                    min={0} max={a.pointsPossible} step={0.5}
+                    value={[value ?? 0]}
+                    onValueChange={([v]) => setHypotheticalScores(prev => ({ ...prev, [a.id]: Math.round(v * 2) / 2 }))}
+                    className="w-full cursor-pointer"
+                  />
                 </div>
               );
             })}
           </div>
         )}
 
-        {completed.length > 0 && (
+        {/* Completed assignments - override */}
+        {gradedAssignments.length > 0 && (
           <div className="space-y-3">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Completed — drag to override</p>
-            {completed.map((a) => {
+            {gradedAssignments.map((a) => {
               const realSub = allSubmissions.find(s => s.assignmentId === a.id);
-              const realScore = realSub?.score ?? null;
+              const realScore = realSub?.score ?? 0;
               const hypo = hypotheticalScores[a.id];
               const value = hypo !== undefined ? hypo : realScore;
-              const isOverridden = hypo !== undefined && hypo !== realScore;
+              const isOverridden = hypo !== undefined && Math.abs(hypo - realScore) > 0.1;
+              const pct = Math.round((value / a.pointsPossible) * 100);
               return (
-                <div key={a.id} className="space-y-1.5">
+                <div key={a.id} className="space-y-1">
                   <div className="flex items-center justify-between">
                     <p className={`text-sm truncate flex-1 mr-2 ${isOverridden ? "font-medium" : "text-muted-foreground"}`}>
                       {a.name}
@@ -470,20 +518,20 @@ function WhatIfCalculator({
                     </p>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {isOverridden && (
-                        <button className="text-xs text-muted-foreground hover:text-foreground"
+                        <button className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
                           onClick={() => { const n = {...hypotheticalScores}; delete n[a.id]; setHypotheticalScores(n); }}>
                           Reset
                         </button>
                       )}
-                      <span className="text-xs font-mono text-muted-foreground">
-                        {value !== null ? value : "--"} / {a.pointsPossible} pts
-                      </span>
+                      <span className="text-xs text-muted-foreground">{value} / {a.pointsPossible} pts ({pct}%)</span>
                     </div>
                   </div>
-                  <Slider min={0} max={a.pointsPossible} step={1}
-                    value={[value !== null ? value : 0]}
-                    onValueChange={([v]) => setHypotheticalScores(prev => ({ ...prev, [a.id]: v }))}
-                    className="w-full" />
+                  <Slider
+                    min={0} max={a.pointsPossible} step={0.5}
+                    value={[value]}
+                    onValueChange={([v]) => setHypotheticalScores(prev => ({ ...prev, [a.id]: Math.round(v * 2) / 2 }))}
+                    className="w-full cursor-pointer"
+                  />
                 </div>
               );
             })}
@@ -493,6 +541,101 @@ function WhatIfCalculator({
     </Card>
   );
 }
+// --- First Move Button (inline in course assignment list) ---
+
+function FirstMoveButton({ assignment }: { assignment: Assignment }) {
+  const [result, setResult] = useState<{ plain: string; firstStep: string; timeEstimate: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    if (result) return; // already loaded
+
+    if (!hasAIKey()) {
+      setError('Add your API key in Settings () to use First Move.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const prompt = `Assignment: "${assignment.name}"
+Course: ${assignment.courseName || assignment.courseCode}
+Points: ${assignment.pointsPossible}
+Due: ${assignment.dueDate ? new Date(assignment.dueDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'No due date'}
+Submission type: ${assignment.submissionTypes?.join(', ') || 'unknown'}
+Description: ${assignment.description ? assignment.description.replace(/<[^>]+>/g, '').slice(0, 500) : 'No description provided'}`;
+
+      const response = await callClaude(
+        prompt,
+        `You help students beat procrastination by making assignments feel small and concrete.
+Given an assignment, return ONLY valid JSON with exactly these three fields:
+{
+  "plain": "One sentence in plain English describing what the student actually has to do — no academic jargon. Start with a verb.",
+  "firstStep": "The single most concrete first physical action the student can take RIGHT NOW that takes under 2 minutes. One tiny action only.",
+  "timeEstimate": "A realistic time estimate like 'About 45 minutes' or 'Plan for 2 hours'."
+}
+Return ONLY the JSON object. No explanation, no markdown, no extra text.`,
+        400
+      );
+      const parsed = JSON.parse(response.replace(/```json|```/g, '').trim());
+      if (parsed.plain && parsed.firstStep && parsed.timeEstimate) {
+        setResult(parsed);
+      }
+    } catch {
+      setError('Could not generate. Try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="relative" onClick={e => e.stopPropagation()}>
+      <button
+        onClick={handleClick}
+        className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full border cursor-pointer transition-colors ${
+          open ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/20'
+        }`}
+      >
+        {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+        How do I start?
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-8 z-50 w-72 bg-popover border border-border rounded-lg shadow-xl p-3 space-y-2.5">
+          {error ? (
+            <p className="text-xs text-red-500">{error}</p>
+          ) : loading ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Thinking...
+            </div>
+          ) : result && (
+            <>
+              <p className="text-xs text-muted-foreground leading-relaxed">{result.plain}</p>
+              <div className="space-y-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-primary">Do this right now</p>
+                <p className="text-sm font-medium leading-snug">{result.firstStep}</p>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground border-t border-border pt-2">
+                <Clock className="h-3 w-3" />
+                <span>{result.timeEstimate}</span>
+              </div>
+            </>
+          )}
+          <button onClick={() => setOpen(false)} className="text-[10px] text-muted-foreground hover:text-foreground cursor-pointer underline">
+            Close
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // --- Assignment Detail ---
 
 function AssignmentDetail({

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { TrendingUp, Clock, Star, Trash2 } from 'lucide-react';
+import { HelpTip } from '@/components/help-tip';
 import { AssignmentCard, AssignmentCardSkeleton } from './assignment-card';
 import { calculateROI } from '@/lib/gradeUtils';
 import { getAllEffortOverrides } from '@/lib/db-queries';
@@ -15,20 +16,24 @@ interface PriorityStackProps {
   submissions: Submission[];
   courses?: Course[];
   isLoading?: boolean;
+  effortOverrides?: Map<string, number>;
+  onEffortChange?: (assignmentId: string, minutes: number) => void;
 }
 
 type SortMode = 'roi' | 'urgency';
 type ViewMode = 'queue' | 'starred' | 'trash';
 
-export function PriorityStack({ assignments, submissions, courses = [], isLoading }: PriorityStackProps) {
+export function PriorityStack({ assignments, submissions, courses = [], isLoading, effortOverrides: externalOverrides, onEffortChange: externalOnEffortChange }: PriorityStackProps) {
   const [sortMode, setSortMode] = useState<SortMode>('roi');
   const [viewMode, setViewMode] = useState<ViewMode>('queue');
-  const [effortOverrides, setEffortOverrides] = useState<Map<string, number>>(new Map());
+  const [localEffortOverrides, setLocalEffortOverrides] = useState<Map<string, number>>(new Map());
+  // Use external overrides if provided (shared with CrunchForecast), else use local
+  const effortOverrides = externalOverrides ?? localEffortOverrides;
   const [starredIds, setStarredIds] = useState<Set<string>>(new Set());
   const [trashedIds, setTrashedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    getAllEffortOverrides().then(setEffortOverrides).catch(() => {});
+    getAllEffortOverrides().then(setLocalEffortOverrides).catch(() => {});
     // Load persisted starred/trashed from localStorage
     try {
       const savedStarred = JSON.parse(localStorage.getItem('gradeos-starred') || '[]');
@@ -73,11 +78,12 @@ export function PriorityStack({ assignments, submissions, courses = [], isLoadin
   }, [pendingAssignments, sortMode, effortOverrides]);
 
   const handleEffortChange = (assignmentId: string, minutes: number) => {
-    setEffortOverrides(prev => {
+    setLocalEffortOverrides(prev => {
       const next = new Map(prev);
       next.set(assignmentId, minutes);
       return next;
     });
+    externalOnEffortChange?.(assignmentId, minutes);
   };
 
   const handleStar = (assignmentId: string, starred: boolean) => {
@@ -147,7 +153,10 @@ export function PriorityStack({ assignments, submissions, courses = [], isLoadin
     <div className="space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-sm">Priority Queue</h3>
+        <div className="flex items-center gap-1.5">
+          <h3 className="font-semibold text-sm">Priority Queue</h3>
+          <HelpTip text="Your pending assignments sorted by priority. ROI sort puts the highest-value assignments (most grade impact per hour of effort) at the top so you work on what matters most first. Urgency sort puts soonest-due assignments first. Expand any card to set effort estimate or simulate your grade." />
+        </div>
         <TooltipProvider>
           <div className="flex items-center gap-1">
             <Tooltip>
@@ -158,10 +167,10 @@ export function PriorityStack({ assignments, submissions, courses = [], isLoadin
                   onClick={() => setSortMode('roi')}
                   className="h-7 px-2"
                 >
-                  <TrendingUp className="h-3 w-3 mr-1" />ROI
+                  <TrendingUp className="h-3 w-3 mr-1" />Best bang for buck
                 </Button>
               </TooltipTrigger>
-              <TooltipContent><p>Sort by grade points per hour</p></TooltipContent>
+              <TooltipContent><p>Puts the assignment that gives you the most grade points per hour of effort at the top</p></TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -171,7 +180,7 @@ export function PriorityStack({ assignments, submissions, courses = [], isLoadin
                   onClick={() => setSortMode('urgency')}
                   className="h-7 px-2"
                 >
-                  <Clock className="h-3 w-3 mr-1" />Urgency
+                  <Clock className="h-3 w-3 mr-1" />Due soonest
                 </Button>
               </TooltipTrigger>
               <TooltipContent><p>Sort by due date</p></TooltipContent>
@@ -181,23 +190,25 @@ export function PriorityStack({ assignments, submissions, courses = [], isLoadin
       </div>
 
       {/* View mode tabs */}
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+      <div className="flex items-center gap-1">
         <button
           onClick={() => setViewMode('queue')}
-          className={`cursor-pointer transition-colors ${viewMode === 'queue' ? 'text-foreground font-medium' : 'hover:text-foreground'}`}
+          className={`text-xs px-2 py-1 rounded transition-colors ${viewMode === 'queue' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}`}
         >
           All ({sortedAssignments.filter(a => !trashedIds.has(a.id)).length})
         </button>
         <button
           onClick={() => setViewMode('starred')}
-          className={`cursor-pointer transition-colors ${viewMode === 'starred' ? 'text-foreground font-medium' : 'hover:text-foreground'}`}
+          className={`text-xs px-2 py-1 rounded transition-colors flex items-center gap-1 ${viewMode === 'starred' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}`}
         >
+          <Star className="h-2.5 w-2.5" />
           Starred ({starredIds.size})
         </button>
         <button
           onClick={() => setViewMode('trash')}
-          className={`cursor-pointer transition-colors ${viewMode === 'trash' ? 'text-foreground font-medium' : 'hover:text-foreground'}`}
+          className={`text-xs px-2 py-1 rounded transition-colors flex items-center gap-1 ${viewMode === 'trash' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}`}
         >
+          <Trash2 className="h-2.5 w-2.5" />
           Removed ({trashedIds.size})
         </button>
       </div>
@@ -211,13 +222,20 @@ export function PriorityStack({ assignments, submissions, courses = [], isLoadin
 
       {/* Cards */}
       {visibleAssignments.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-          <p className="text-sm">
-            {viewMode === 'starred' ? 'No starred assignments' :
-             viewMode === 'trash' ? 'Nothing removed' :
-             'No pending assignments'}
-          </p>
-          {viewMode === 'queue' && <p className="text-xs mt-1">You're all caught up!</p>}
+        <div className="flex flex-col items-center justify-center py-10 text-center space-y-1.5">
+          {viewMode === 'queue' ? (
+            <>
+              <p className="text-sm font-medium">All caught up</p>
+              <p className="text-xs text-muted-foreground">No pending assignments right now.</p>
+            </>
+          ) : viewMode === 'starred' ? (
+            <>
+              <p className="text-sm text-muted-foreground">No starred assignments yet</p>
+              <p className="text-xs text-muted-foreground">Star any assignment to pin it here.</p>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">Nothing removed.</p>
+          )}
         </div>
       ) : (
         <div className="space-y-2">

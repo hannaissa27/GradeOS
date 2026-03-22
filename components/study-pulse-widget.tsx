@@ -58,9 +58,9 @@ export function StudyPulseWidget({ assignmentId }: StudyPulseWidgetProps) {
   };
 
   const reactions: { key: Reaction; emoji: string; label: string }[] = [
-    { key: 'confused', emoji: '😤', label: 'Confused' },
-    { key: 'got_it', emoji: '✅', label: 'Got it' },
-    { key: 'stressed', emoji: '😰', label: 'Stressed' },
+    { key: 'confused', emoji: '', label: 'Confused' },
+    { key: 'got_it', emoji: '', label: 'Got it' },
+    { key: 'stressed', emoji: '', label: 'Stressed' },
   ];
 
   const totalReactions = stats 

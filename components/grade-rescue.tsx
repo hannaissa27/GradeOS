@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { AlertTriangle, Target, TrendingUp, Plus } from 'lucide-react';
+import { HelpTip } from '@/components/help-tip';
 import { getGradeColor, gradeToLetter } from '@/lib/gradeUtils';
 import type { Assignment, Submission } from '@/lib/types';
 
@@ -141,10 +142,13 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
   return (
     <Card className="border-2 border-primary/20">
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-          <Target className="h-4 w-4 text-primary" />
-          Grade Rescue
-        </CardTitle>
+        <div className="flex items-center gap-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Target className="h-4 w-4 text-primary" />
+            Grade Rescue
+          </CardTitle>
+          <HelpTip text="Type any grade you want to finish with — like 85 — and Grade Rescue instantly tells you three things: (1) the minimum score you need on every remaining assignment to hit that target, (2) where you'll finish if you just keep doing what you're doing, and (3) the highest grade still mathematically possible. If your teacher hasn't posted all exams to Canvas yet, tap 'Add manually' to include them in the math." />
+        </div>
       </CardHeader>
       <CardContent className="space-y-5">
 
@@ -177,12 +181,24 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
           </div>
         </div>
 
-        {/* Remaining assignments summary */}
-        <div className="text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">{allFuture.length}</span> assignments remaining
-          {' · '}<span className="font-medium text-foreground">{futurePossible} pts</span> still up for grabs
-          {customAssignments.length > 0 && (
-            <span className="ml-1 text-primary">({customAssignments.length} added manually)</span>
+        {/* Remaining assignments summary + note about Canvas lag */}
+        <div className="space-y-1.5">
+          <div className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{allFuture.length}</span> assignments on Canvas remaining
+            {' · '}<span className="font-medium text-foreground">{futurePossible} pts</span> still up for grabs
+            {customAssignments.length > 0 && (
+              <span className="ml-1 text-primary">+{customAssignments.length} added manually</span>
+            )}
+          </div>
+          {remainingAssignments.length === 0 && customAssignments.length === 0 && (
+            <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-md px-2.5 py-1.5">
+              No upcoming assignments on Canvas yet — teachers often post them as the semester goes. Use "Add manually" below to include any upcoming exams or assignments you already know about.
+            </div>
+          )}
+          {remainingAssignments.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Teachers often add assignments throughout the semester — use "Add manually" to include any upcoming exams not yet posted on Canvas.
+            </p>
           )}
         </div>
 
@@ -230,7 +246,7 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
                   <span className="text-primary font-medium">{a.name}</span>
                   <div className="flex items-center gap-2">
                     <span className="text-muted-foreground">{a.pointsPossible} pts</span>
-                    <button onClick={() => removeCustom(a.id)} className="text-muted-foreground hover:text-destructive cursor-pointer">✕</button>
+                    <button onClick={() => removeCustom(a.id)} className="text-muted-foreground hover:text-destructive cursor-pointer"></button>
                   </div>
                 </div>
               ))}
@@ -241,7 +257,7 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
         {/* Target input */}
         <div className="space-y-3">
           <div className="flex items-center gap-3">
-            <p className="text-sm font-medium whitespace-nowrap">I want to finish with</p>
+            <p className="text-sm font-medium whitespace-nowrap">I want to finish with a</p>
             <div className="flex items-center gap-1">
               <Input
                 type="number"

@@ -8,6 +8,7 @@ import { ConnectionModal } from './connection-modal';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Sun, Moon, LogOut, RefreshCw, Command, CheckCircle2, Eye, EyeOff, CheckSquare } from 'lucide-react';
+import { HelpTip } from '@/components/help-tip';
 
 interface DashboardNavProps {
   isZenMode?: boolean;
@@ -80,14 +81,15 @@ export function DashboardNav({ isZenMode, onToggleZenMode, onSync }: DashboardNa
                 <TooltipTrigger asChild>
                   <button
                     onClick={onToggleZenMode}
-                    className={`p-2 hover:bg-secondary rounded-lg transition-colors ${isZenMode ? 'bg-secondary' : ''}`}
-                    aria-label={isZenMode ? 'Show grades' : 'Hide grades'}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${isZenMode ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}
+                    title={isZenMode ? 'Show grades' : 'Hide all grade numbers'}
                   >
-                    {isZenMode ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                    {isZenMode ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                    <span className="hidden sm:inline">{isZenMode ? 'Show grades' : 'Hide grades'}</span>
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {isZenMode ? 'Show grades' : 'Hide scores, hover to reveal'}
+                  {isZenMode ? 'Click to show your grade numbers' : 'Hide all grade numbers from the screen (useful in class)'}
                 </TooltipContent>
               </Tooltip>
             )}

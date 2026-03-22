@@ -165,10 +165,10 @@ function DashboardContent() {
       <main className="max-w-7xl mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-4 mb-6">
-            <TabsTrigger value="execute">Execute</TabsTrigger>
-            <TabsTrigger value="courses">Courses</TabsTrigger>
-            <TabsTrigger value="schedule">Schedule</TabsTrigger>
-            <TabsTrigger value="reflect">Reflect</TabsTrigger>
+            <TabsTrigger value="execute">Dashboard</TabsTrigger>
+            <TabsTrigger value="courses">My Courses</TabsTrigger>
+            <TabsTrigger value="schedule">My Week</TabsTrigger>
+            <TabsTrigger value="reflect">Analytics</TabsTrigger>
           </TabsList>
 
           <TabsContent value="execute" className="mt-0">

@@ -2,20 +2,25 @@
 
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Star, Trash2, ChevronDown, Clock, AlertTriangle } from 'lucide-react';
+import { Star, Trash2, ChevronDown, Clock, AlertTriangle, Zap, Loader2 } from 'lucide-react';
 import {
   courseColor,
   formatDueDate,
   getDueDateColor,
   minutesToLabel,
-  calculateROI,
   getGradeColor,
 } from '@/lib/gradeUtils';
 import { getEffortOverride, setEffortOverride } from '@/lib/db-queries';
+import { callClaude, hasAIKey } from '@/lib/aiUtils';
 import type { Assignment, Submission } from '@/lib/types';
+
+interface FirstMoveResult {
+  plain: string;       // one sentence: what this actually is
+  firstStep: string;   // the single first physical action
+  timeEstimate: string; // "About 90 minutes"
+}
 
 interface AssignmentCardProps {
   assignment: Assignment;
@@ -49,13 +54,74 @@ export function AssignmentCard({
   const [whatIfScore, setWhatIfScore] = useState<number | null>(null);
   const [missingDismissed, setMissingDismissed] = useState(false);
 
+  // First Move state
+  const [firstMove, setFirstMove] = useState<FirstMoveResult | null>(null);
+  const [firstMoveLoading, setFirstMoveLoading] = useState(false);
+  const [firstMoveError, setFirstMoveError] = useState<string | null>(null);
+
   useEffect(() => {
     getEffortOverride(assignment.id).then(minutes => {
       if (minutes !== null) { setEffortMinutes(minutes); setSavedEffort(minutes); }
     }).catch(() => {});
   }, [assignment.id]);
 
-  // effort saves inline via onValueCommit on the slider
+  const handleFirstMove = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (firstMove) {
+      // Toggle off if already showing
+      setFirstMove(null);
+      return;
+    }
+
+    if (!hasAIKey()) {
+      setFirstMoveError('Add your Anthropic API key in Settings to use First Move.');
+      setIsExpanded(true);
+      return;
+    }
+
+    setFirstMoveLoading(true);
+    setFirstMoveError(null);
+    setIsExpanded(true);
+
+    try {
+      const prompt = `Assignment: "${assignment.name}"
+Course: ${assignment.courseName || assignment.courseCode}
+Points: ${assignment.pointsPossible}
+Due: ${assignment.dueDate ? new Date(assignment.dueDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'No due date'}
+Submission type: ${assignment.submissionTypes?.join(', ') || 'unknown'}
+Description: ${assignment.description ? assignment.description.replace(/<[^>]+>/g, '').slice(0, 500) : 'No description provided'}`;
+
+      const response = await callClaude(
+        prompt,
+        `You help students beat procrastination by making assignments feel small and concrete.
+Given an assignment, return ONLY valid JSON with exactly these three fields:
+{
+  "plain": "One sentence in plain English describing what the student actually has to do — no academic jargon, no rubric language. Start with a verb.",
+  "firstStep": "The single most concrete first physical action the student can take RIGHT NOW that takes under 2 minutes. Not a plan. Not step 1 of 10. One tiny action. Examples: 'Open a Google Doc and type your name and the date at the top.' or 'Find your textbook and flip to the chapter listed in the assignment.' or 'Write one sentence answering the main question, even badly.'",
+  "timeEstimate": "A realistic time estimate like 'About 45 minutes' or 'Plan for 2 hours'. Base it on the assignment type and point value."
+}
+Return ONLY the JSON object. No explanation, no markdown, no extra text.`,
+        400
+      );
+
+      const cleaned = response.replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(cleaned);
+
+      if (parsed.plain && parsed.firstStep && parsed.timeEstimate) {
+        setFirstMove(parsed as FirstMoveResult);
+      } else {
+        throw new Error('Incomplete response');
+      }
+    } catch (err: any) {
+      if (err.message === 'NO_API_KEY' || err.message === 'INVALID_API_KEY') {
+        setFirstMoveError('Invalid API key. Check your key in Settings.');
+      } else {
+        setFirstMoveError('Could not generate. Try again.');
+      }
+    } finally {
+      setFirstMoveLoading(false);
+    }
+  };
 
   const dueDateColorClass = getDueDateColor(assignment.dueDate);
   const isStarred = starredIds.has(assignment.id);
@@ -87,7 +153,6 @@ export function AssignmentCard({
     ? Math.round((whatIfGrade - currentCourseGrade) * 10) / 10
     : null;
 
-  // Display full course name, strip "CODE: " prefix if present
   const rawName = assignment.courseName || assignment.courseCode;
   const courseDisplay = rawName.includes(':')
     ? rawName.split(':').slice(1).join(':').trim().replace(/^(AP|IB|Honors|Accelerated)\s+/i, '').trim()
@@ -111,6 +176,9 @@ export function AssignmentCard({
               {gradeImpact !== null && (
                 <><span>·</span><span className="text-amber-500 dark:text-amber-400">{gradeImpact}% of grade</span></>
               )}
+              {savedEffort !== null && (
+                <><span>·</span><span className="text-muted-foreground">~{minutesToLabel(savedEffort)}</span></>
+              )}
               <span>·</span>
               <span className={dueDateColorClass}>{formatDueDate(assignment.dueDate)}</span>
             </div>
@@ -121,14 +189,33 @@ export function AssignmentCard({
                 <button
                   onClick={() => setMissingDismissed(true)}
                   className="text-xs text-muted-foreground hover:text-foreground underline ml-1 cursor-pointer"
-                  title="Dismiss missing label"
                 >
                   dismiss
                 </button>
               </div>
             )}
           </div>
-          <div className="flex items-center gap-0 flex-shrink-0">
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-0.5 flex-shrink-0">
+            {/* First Move button */}
+            <button
+              onClick={handleFirstMove}
+              disabled={firstMoveLoading}
+              className={`flex items-center gap-1 px-1.5 py-1 rounded text-xs transition-colors cursor-pointer ${
+                firstMove
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+              }`}
+              title="How do I start this?"
+            >
+              {firstMoveLoading
+                ? <Loader2 className="h-3 w-3 animate-spin" />
+                : <Zap className="h-3 w-3" />
+              }
+              <span className="hidden sm:inline text-xs">How to start</span>
+            </button>
+
             <button
               onClick={() => onStar?.(assignment.id, !isStarred)}
               className={`p-1 rounded hover:bg-accent transition-colors cursor-pointer ${isStarred ? 'text-yellow-400' : 'text-muted-foreground hover:text-yellow-400'}`}
@@ -155,7 +242,43 @@ export function AssignmentCard({
         {/* Expanded panel */}
         {isExpanded && (
           <div className="mt-2.5 pt-2.5 border-t border-border space-y-3">
-            {/* Effort — auto-saves on slider release */}
+
+            {/* First Move result */}
+            {(firstMove || firstMoveError) && (
+              <div className={`space-y-2.5 rounded-lg p-3 ${firstMove ? 'bg-primary/5 border border-primary/20' : 'bg-red-500/5 border border-red-500/20'}`}>
+                {firstMoveError ? (
+                  <p className="text-xs text-red-500">{firstMoveError}</p>
+                ) : firstMove && (
+                  <>
+                    {/* What it actually is */}
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      {firstMove.plain}
+                    </p>
+
+                    {/* The first step — hero element */}
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-primary">Do this right now</p>
+                      <p className="text-sm font-medium leading-snug">{firstMove.firstStep}</p>
+                    </div>
+
+                    {/* Time estimate */}
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground pt-0.5">
+                      <Clock className="h-3 w-3 flex-shrink-0" />
+                      <span>{firstMove.timeEstimate}</span>
+                    </div>
+
+                    <button
+                      onClick={() => setFirstMove(null)}
+                      className="text-[10px] text-muted-foreground hover:text-foreground cursor-pointer underline"
+                    >
+                      Dismiss
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Effort */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
@@ -163,14 +286,13 @@ export function AssignmentCard({
                 </p>
                 <span className="text-xs font-medium">
                   {minutesToLabel(effortMinutes)}
-                  {isSaving && <span className="ml-1 text-muted-foreground opacity-60">saving...</span>}
+                  {isSaving && <span className="ml-1 opacity-50">saving...</span>}
                 </span>
               </div>
               <Slider
                 value={[effortMinutes]}
                 onValueChange={([v]) => setEffortMinutes(v)}
                 onValueCommit={([v]) => {
-                  setEffortMinutes(v);
                   setIsSaving(true);
                   setEffortOverride(assignment.id, v)
                     .then(() => { setSavedEffort(v); onEffortChange?.(assignment.id, v); })
@@ -186,17 +308,14 @@ export function AssignmentCard({
             <div className="space-y-1.5">
               <div className="flex items-center justify-between flex-wrap gap-1">
                 <p className="text-xs text-muted-foreground">What if I score...</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-muted-foreground">
-                    {whatIfScore !== null ? whatIfScore : '--'} / {assignment.pointsPossible} pts
-                  </span>
-
-                </div>
+                <span className="text-xs font-mono text-muted-foreground">
+                  {whatIfScore !== null ? whatIfScore : '--'} / {assignment.pointsPossible} pts
+                </span>
               </div>
               <Slider
                 value={[whatIfScore ?? 0]}
-                onValueChange={([v]) => setWhatIfScore(v)}
-                min={0} max={assignment.pointsPossible} step={1}
+                onValueChange={([v]) => setWhatIfScore(Math.round(v * 2) / 2)}
+                min={0} max={assignment.pointsPossible} step={0.5}
                 className="w-full cursor-pointer"
               />
               {whatIfGrade !== null && (
