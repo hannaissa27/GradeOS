@@ -2,19 +2,13 @@
 
 import React, { useState, useMemo } from 'react';
 import { useCanvas } from '@/lib/canvas-context';
-import { ResourceHeist } from '@/components/resource-heist';
-import { SyllabusSpy } from '@/components/syllabus-spy';
 import { GradeRescue } from '@/components/grade-rescue';
+import { SemesterArc } from '@/components/semester-arc';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Input } from '@/components/ui/input';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { Slider } from '@/components/ui/slider';
-import { ArrowLeft, Check, Sparkles, AlertCircle, ChevronDown, Zap, Loader2, Clock } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ArrowLeft, ChevronDown, Zap, Loader2, Clock } from 'lucide-react';
 import { HelpTip } from '@/components/help-tip';
 import {
   courseColor,
@@ -22,11 +16,8 @@ import {
   gradeToLetter,
   formatDueDate,
   getDueDateColor,
-  getAssignmentTypeBadge,
-  computeProjectedGrade,
 } from '@/lib/gradeUtils';
 import { hasAIKey, callClaude } from '@/lib/aiUtils';
-import { SemesterArc } from '@/components/semester-arc';
 import type { Course, Assignment, Submission } from '@/lib/types';
 
 interface PlanTabProps {
@@ -52,47 +43,40 @@ export function PlanTab({
   getAssignmentsForCourse,
   getSubmissionsForCourse,
 }: PlanTabProps) {
-  const [expandedAssignment, setExpandedAssignment] = useState<string | null>(null);
+  const { connection } = useCanvas();
   const [completedOpen, setCompletedOpen] = useState(false);
 
-  const selectedCourse = courses.find((c) => c.id === selectedCourseId);
-
+  const selectedCourse = selectedCourseId ? courses.find(c => c.id === selectedCourseId) ?? null : null;
   const assignments = selectedCourseId ? getAssignmentsForCourse(selectedCourseId) : [];
   const submissions = selectedCourseId ? getSubmissionsForCourse(selectedCourseId) : [];
 
   const now = new Date();
 
-  // Missing: explicitly flagged as missing by Canvas
-  const missingAssignments = useMemo(() => {
-    return assignments.filter((a) => {
-      const submission = submissions.find((s) => s.assignmentId === a.id);
-      return submission?.missing && !submission?.excused;
-    });
-  }, [assignments, submissions]);
+  const missingAssignments = useMemo(() =>
+    assignments.filter(a => {
+      const sub = submissions.find(s => s.assignmentId === a.id);
+      return sub?.missing && !sub?.excused;
+    }), [assignments, submissions]);
 
-  // Upcoming: due in future or no due date, and not graded/submitted
-  const upcomingAssignments = useMemo(() => {
-    return assignments.filter((a) => {
-      const submission = submissions.find((s) => s.assignmentId === a.id);
-      const isGraded = submission?.score !== null && submission?.score !== undefined;
-      const isSubmitted = !!submission?.submittedAt;
+  const upcomingAssignments = useMemo(() =>
+    assignments.filter(a => {
+      const sub = submissions.find(s => s.assignmentId === a.id);
+      const isGraded = sub?.score !== null && sub?.score !== undefined;
+      const isSubmitted = !!sub?.submittedAt;
       const isPast = a.dueDate ? new Date(a.dueDate) < now : false;
       return !isGraded && !(isSubmitted && isPast);
-    });
-  }, [assignments, submissions]);
+    }), [assignments, submissions]);
 
-  // Completed: graded or submitted-past-due
-  const completedAssignments = useMemo(() => {
-    return assignments.filter((a) => {
-      const submission = submissions.find((s) => s.assignmentId === a.id);
-      const isGraded = submission?.score !== null && submission?.score !== undefined;
-      const isSubmitted = !!submission?.submittedAt;
+  const completedAssignments = useMemo(() =>
+    assignments.filter(a => {
+      const sub = submissions.find(s => s.assignmentId === a.id);
+      const isGraded = sub?.score !== null && sub?.score !== undefined;
+      const isSubmitted = !!sub?.submittedAt;
       const isPast = a.dueDate ? new Date(a.dueDate) < now : false;
       return isGraded || (isSubmitted && isPast);
-    });
-  }, [assignments, submissions]);
+    }), [assignments, submissions]);
 
-  // If no course selected, show course grid
+  // ─── Course Grid ───────────────────────────────────────────────────────────
   if (!selectedCourseId) {
     return (
       <div className="space-y-4">
@@ -102,19 +86,26 @@ export function PlanTab({
         </div>
         {isLoading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
+            {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-36 w-full" />)}
           </div>
         ) : courses.length === 0 ? (
           <p className="text-sm text-muted-foreground py-8 text-center">No courses found.</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {courses.map((course) => {
-              const courseAssignments = allAssignments.filter(a => a.courseId === course.id);
-              const courseSubmissions = allSubmissions.filter(s => s.courseId === course.id);
-              const pending = courseAssignments.filter(a => {
-                const sub = courseSubmissions.find(s => s.assignmentId === a.id);
-                return !sub?.submittedAt && (sub?.score === null || sub?.score === undefined) && a.dueDate && new Date(a.dueDate) > new Date();
+            {courses.map(course => {
+              const ca = allAssignments.filter(a => a.courseId === course.id);
+              const cs = allSubmissions.filter(s => s.courseId === course.id);
+              const pending = ca.filter(a => {
+                const sub = cs.find(s => s.assignmentId === a.id);
+                return !sub?.submittedAt && (sub?.score === null || sub?.score === undefined) && a.dueDate && new Date(a.dueDate) > now;
               });
+              const missing = cs.filter(s => s.missing).length;
+              const shortName = (() => {
+                const n = course.name || '';
+                const after = n.includes(':') ? n.split(':').slice(1).join(':').trim() : n;
+                return after.replace(/^(AP|IB|Honors|Accelerated) /i, '').trim();
+              })();
+
               return (
                 <button
                   key={course.id}
@@ -123,9 +114,7 @@ export function PlanTab({
                 >
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: courseColor(course.id) }} />
-                    <p className="font-semibold text-sm truncate">
-                      {course.name.includes(':') ? course.name.split(':').slice(1).join(':').trim().replace(/^(AP|IB|Honors|Accelerated) /i,'').trim() : course.name}
-                    </p>
+                    <p className="font-semibold text-sm truncate">{shortName}</p>
                   </div>
                   <div className="flex items-end justify-between mb-3">
                     <div>
@@ -146,9 +135,7 @@ export function PlanTab({
                     ) : (
                       <p className="text-green-600 dark:text-green-400">Nothing due soon</p>
                     )}
-                    {courseSubmissions.filter(s => s.missing).length > 0 && (
-                      <p className="text-red-500 font-medium">{courseSubmissions.filter(s => s.missing).length} missing</p>
-                    )}
+                    {missing > 0 && <p className="text-red-500 font-medium">{missing} missing</p>}
                   </div>
                 </button>
               );
@@ -159,11 +146,12 @@ export function PlanTab({
     );
   }
 
-  // Course detail view - safety first
+  // ─── Course Detail ─────────────────────────────────────────────────────────
   if (!selectedCourse) {
     return (
-      <div className="text-center py-8 text-muted-foreground text-sm">
-        Course not found. <button onClick={onBack} className="underline cursor-pointer">Go back</button>
+      <div className="text-center py-8">
+        <p className="text-sm text-muted-foreground mb-2">Course not found.</p>
+        <button onClick={onBack} className="text-xs underline cursor-pointer text-muted-foreground hover:text-foreground">Go back</button>
       </div>
     );
   }
@@ -171,49 +159,36 @@ export function PlanTab({
   return (
     <div className="space-y-5">
 
-      {/* Header — back button + course name + grade */}
+      {/* Header */}
       <div className="flex items-center gap-3">
-        <button
-          onClick={onBack}
-          className="p-1.5 rounded-md hover:bg-accent transition-colors cursor-pointer text-muted-foreground hover:text-foreground"
-        >
+        <button onClick={onBack} className="p-1.5 rounded-md hover:bg-accent transition-colors cursor-pointer text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" />
         </button>
-        <div
-          className="w-3 h-3 rounded-full flex-shrink-0"
-          style={{ backgroundColor: courseColor(selectedCourseId || '') }}
-        />
+        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: courseColor(selectedCourseId) }} />
         <div className="flex-1 min-w-0">
-          <p className="text-xs text-muted-foreground">
-            {selectedCourse?.name?.includes(':')
-              ? selectedCourse.name.split(':').slice(1).join(':').trim().replace(/^(AP|IB|Honors|Accelerated) /i,'').trim()
-              : selectedCourse?.name}
+          <p className="font-semibold text-base truncate">
+            {selectedCourse.name.includes(':')
+              ? selectedCourse.name.split(':').slice(1).join(':').trim().replace(/^(AP|IB|Honors|Accelerated) /i, '').trim()
+              : selectedCourse.name}
           </p>
         </div>
         <div className="text-right flex-shrink-0">
-          {selectedCourse?.currentGrade !== null ? (
+          {selectedCourse.currentGrade !== null ? (
             <>
-              <span className={`text-2xl font-bold grade-value ${getGradeColor(selectedCourse?.currentGrade ?? null)}`} data-grade="true">
-                {selectedCourse?.currentGrade}%
+              <span className={`text-2xl font-bold grade-value ${getGradeColor(selectedCourse.currentGrade)}`} data-grade="true">
+                {selectedCourse.currentGrade}%
               </span>
-              <span className={`ml-1.5 text-base grade-value ${getGradeColor(selectedCourse?.currentGrade ?? null)}`} data-grade="true">
-                {gradeToLetter(selectedCourse?.currentGrade ?? null)}
+              <span className={`ml-1.5 text-base grade-value ${getGradeColor(selectedCourse.currentGrade)}`} data-grade="true">
+                {gradeToLetter(selectedCourse.currentGrade)}
               </span>
             </>
           ) : (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="text-2xl font-bold text-muted-foreground cursor-help">N/A</span>
-                </TooltipTrigger>
-                <TooltipContent><p>Grade hidden by instructor</p></TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <span className="text-2xl font-bold text-muted-foreground">N/A</span>
           )}
         </div>
       </div>
 
-      {/* Missing assignments alert */}
+      {/* Missing assignments */}
       {missingAssignments.length > 0 && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 space-y-1.5">
           <p className="text-xs font-medium text-red-500">{missingAssignments.length} missing assignment{missingAssignments.length !== 1 ? 's' : ''}</p>
@@ -229,29 +204,19 @@ export function PlanTab({
       {/* Grade Trajectory */}
       <SemesterArc assignments={assignments} submissions={submissions} isLoading={isLoading} />
 
-      {/* Grade Rescue — the star feature */}
+      {/* Grade Rescue */}
       <GradeRescue
-        currentGrade={selectedCourse?.currentGrade ?? null}
+        currentGrade={selectedCourse.currentGrade ?? null}
         assignments={assignments}
         submissions={submissions}
       />
 
-      {/* What-If + Tools row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <WhatIfCalculator
-          assignments={upcomingAssignments}
-          submissions={submissions}
-          currentGrade={selectedCourse?.currentGrade ?? null}
-          allAssignments={assignments}
-          allSubmissions={submissions}
-        />
-        {connection.connected && selectedCourse && (
-          <div className="space-y-4">
-            <ResourceHeist course={selectedCourse} connection={connection} />
-            <SyllabusSpy />
-          </div>
-        )}
-      </div>
+      {/* Grade Simulator */}
+      <GradeSimulator
+        assignments={assignments}
+        submissions={submissions}
+        currentGrade={selectedCourse.currentGrade ?? null}
+      />
 
       {/* Upcoming Assignments */}
       <section>
@@ -262,22 +227,19 @@ export function PlanTab({
           )}
         </h2>
         {isLoading ? (
-          <div className="space-y-2">
-            {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
-          </div>
+          <div className="space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
         ) : upcomingAssignments.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4 text-center">No upcoming assignments.</p>
         ) : (
-          <AssignmentList
-            assignments={upcomingAssignments}
-            submissions={submissions}
-            expandedAssignment={expandedAssignment}
-            onExpand={setExpandedAssignment}
-          />
+          <div className="space-y-2">
+            {upcomingAssignments.map(a => (
+              <AssignmentRow key={a.id} assignment={a} submission={submissions.find(s => s.assignmentId === a.id)} allAssignments={assignments} allSubmissions={submissions} currentGrade={selectedCourse.currentGrade ?? null} />
+            ))}
+          </div>
         )}
       </section>
 
-      {/* Completed — collapsible */}
+      {/* Completed */}
       {completedAssignments.length > 0 && (
         <Collapsible open={completedOpen} onOpenChange={setCompletedOpen}>
           <CollapsibleTrigger asChild>
@@ -286,13 +248,10 @@ export function PlanTab({
               Completed ({completedAssignments.length})
             </button>
           </CollapsibleTrigger>
-          <CollapsibleContent className="mt-3">
-            <AssignmentList
-              assignments={completedAssignments}
-              submissions={submissions}
-              expandedAssignment={expandedAssignment}
-              onExpand={setExpandedAssignment}
-            />
+          <CollapsibleContent className="mt-3 space-y-2">
+            {completedAssignments.map(a => (
+              <AssignmentRow key={a.id} assignment={a} submission={submissions.find(s => s.assignmentId === a.id)} allAssignments={assignments} allSubmissions={submissions} currentGrade={selectedCourse.currentGrade ?? null} />
+            ))}
           </CollapsibleContent>
         </Collapsible>
       )}
@@ -300,258 +259,100 @@ export function PlanTab({
   );
 }
 
-// --- Assignment List ---
+// ─── Assignment Row ────────────────────────────────────────────────────────
 
-interface AssignmentListProps {
-  assignments: Assignment[];
-  submissions: Submission[];
-  expandedAssignment: string | null;
-  onExpand: (id: string | null) => void;
-}
-
-function AssignmentList({ assignments, submissions, expandedAssignment, onExpand }: AssignmentListProps) {
-  // Ensure value is always a string (empty string = nothing open) so
-  // the Accordion stays controlled and never flips to uncontrolled.
-  return (
-    <Accordion
-      type="single"
-      collapsible
-      value={expandedAssignment ?? ''}
-      onValueChange={(value) => onExpand(value === '' ? null : value)}
-    >
-      {assignments.map((assignment) => {
-        const submission = submissions.find((s) => s.assignmentId === assignment.id);
-        const typeBadge = getAssignmentTypeBadge(assignment.submissionTypes);
-
-        return (
-          <AccordionItem key={assignment.id} value={assignment.id}>
-            <AccordionTrigger className="hover:no-underline">
-              <div className="flex items-center gap-3 flex-1 text-left">
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm">{assignment.name}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Badge variant="secondary" className={typeBadge.className}>
-                      {typeBadge.label}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {assignment.pointsPossible} pts
-                    </span>
-                    <span className={`text-xs ${getDueDateColor(assignment.dueDate)}`}>
-                      {formatDueDate(assignment.dueDate)}
-                    </span>
-                  </div>
-                </div>
-                {submission?.score !== null && submission?.score !== undefined && (
-                  <Badge variant="outline" className="text-[oklch(var(--grade-safe))]">
-                    {submission.score}/{assignment.pointsPossible}
-                  </Badge>
-                )}
-                {submission?.submittedAt && !submission?.score && (
-                  <Badge variant="outline" className="text-[oklch(var(--grade-safe))]">
-                    <Check className="w-3 h-3 mr-1" />
-                    Submitted
-                  </Badge>
-                )}
-                {submission?.missing && <Badge variant="destructive">Missing</Badge>}
-              </div>
-            </AccordionTrigger>
-            <AccordionContent>
-              {/* First Move button inside content — NOT in trigger (nested buttons crash) */}
-              {!submission?.submittedAt && (submission?.score === null || submission?.score === undefined) && (
-                <div className="pb-3">
-                  <FirstMoveButton assignment={assignment} />
-                </div>
-              )}
-              <AssignmentDetail assignment={assignment} submission={submission} />
-            </AccordionContent>
-          </AccordionItem>
-        );
-      })}
-    </Accordion>
-  );
-}
-
-// --- What-If Calculator ---
-
-interface WhatIfCalculatorProps {
-  assignments: Assignment[];
-  submissions: Submission[];
-  currentGrade: number | null;
+function AssignmentRow({ assignment, submission, allAssignments, allSubmissions, currentGrade }: {
+  assignment: Assignment;
+  submission?: Submission;
   allAssignments: Assignment[];
   allSubmissions: Submission[];
-}
+  currentGrade: number | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [whatIfScore, setWhatIfScore] = useState<number | null>(null);
 
-function WhatIfCalculator({
-  assignments,
-  submissions,
-  currentGrade,
-  allAssignments,
-  allSubmissions,
-}: WhatIfCalculatorProps) {
-  const [hypotheticalScores, setHypotheticalScores] = useState<Record<string, number>>({});
+  const isGraded = submission?.score !== null && submission?.score !== undefined;
+  const score = submission?.score ?? null;
 
-  // All assignments with points
-  const eligibleAssignments = allAssignments.filter(a => a.pointsPossible > 0);
-
-  // Split into graded and ungraded
-  const gradedAssignments = eligibleAssignments.filter(a => {
-    const sub = allSubmissions.find(s => s.assignmentId === a.id);
-    return sub?.score !== null && sub?.score !== undefined;
-  });
-  const ungradedAssignments = eligibleAssignments.filter(a => {
-    const sub = allSubmissions.find(s => s.assignmentId === a.id);
-    return sub?.score === null || sub?.score === undefined;
-  });
-
-  // Projected grade using hypothetical overrides
-  const projectedGrade = useMemo(() => {
-    let totalEarned = 0;
-    let totalPossible = 0;
-    for (const a of eligibleAssignments) {
+  const whatIfGrade = whatIfScore !== null ? (() => {
+    let earned = 0, possible = 0;
+    for (const a of allAssignments) {
       if (!a.pointsPossible) continue;
-      const hypo = hypotheticalScores[a.id];
-      if (hypo !== undefined) {
-        totalEarned += Math.min(hypo, a.pointsPossible);
-        totalPossible += a.pointsPossible;
-      } else {
-        const sub = allSubmissions.find(s => s.assignmentId === a.id);
-        const score = sub?.score ?? null;
-        if (score !== null) {
-          totalEarned += score;
-          totalPossible += a.pointsPossible;
-        }
-      }
+      if (a.id === assignment.id) { earned += whatIfScore; possible += a.pointsPossible; continue; }
+      const sub = allSubmissions.find(s => s.assignmentId === a.id);
+      if (sub?.score !== null && sub?.score !== undefined) { earned += sub.score; possible += a.pointsPossible; }
     }
-    if (totalPossible === 0) return null;
-    return Math.round((totalEarned / totalPossible) * 1000) / 10;
-  }, [hypotheticalScores, eligibleAssignments, allSubmissions]);
+    return possible > 0 ? Math.round((earned / possible) * 1000) / 10 : null;
+  })() : null;
 
-  const delta = projectedGrade !== null && currentGrade !== null
-    ? Math.round((projectedGrade - currentGrade) * 10) / 10
-    : null;
-
-  const hasAny = Object.keys(hypotheticalScores).length > 0;
-
-  if (!eligibleAssignments || eligibleAssignments.length === 0) return null;
+  const delta = whatIfGrade !== null && currentGrade !== null
+    ? Math.round((whatIfGrade - currentGrade) * 10) / 10 : null;
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <CardTitle className="text-sm font-medium">Grade Simulator</CardTitle>
-            <HelpTip text="Drag a slider on any upcoming assignment to see what your course grade would be if you scored that. Drag completed assignments to override your real score — useful for 'what if I had gotten an A on that test?' The projected grade updates live as you drag." />
+    <div className="rounded-lg border border-border overflow-hidden">
+      <button
+        className="w-full text-left px-3 py-2.5 hover:bg-accent/20 transition-colors cursor-pointer flex items-center gap-3"
+        onClick={() => setOpen(v => !v)}
+      >
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{assignment.name}</p>
+          <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+            <span>{assignment.pointsPossible} pts</span>
+            <span>·</span>
+            <span className={getDueDateColor(assignment.dueDate)}>{formatDueDate(assignment.dueDate)}</span>
           </div>
-          {hasAny && (
-            <button onClick={() => setHypotheticalScores({})} className="text-xs text-muted-foreground hover:text-foreground cursor-pointer">
-              Reset all
-            </button>
-          )}
         </div>
-        <p className="text-xs text-muted-foreground">Drag any slider to see how it affects your grade</p>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Grade summary bar */}
-        <div className="flex items-center gap-4 p-3 bg-muted/40 rounded-lg">
-          <div>
-            <p className="text-xs text-muted-foreground">Current</p>
-            <p className={`text-lg font-bold grade-value ${getGradeColor(currentGrade)}`} data-grade="true">
-              {currentGrade !== null ? `${currentGrade}%` : "N/A"}
-            </p>
-          </div>
-          {projectedGrade !== null && (
-            <>
-              <div className="text-muted-foreground">→</div>
-              <div>
-                <p className="text-xs text-muted-foreground">Projected</p>
-                <p className={`text-lg font-bold grade-value ${getGradeColor(projectedGrade)}`} data-grade="true">
-                  {projectedGrade}%
-                </p>
-              </div>
-              {delta !== null && (
-                <div>
-                  <p className="text-xs text-muted-foreground">Change</p>
-                  <p className={`text-lg font-bold ${delta >= 0 ? "text-green-500" : "text-red-500"}`}>
-                    {delta >= 0 ? "+" : ""}{delta}%
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {isGraded && (
+            <span className={`text-sm font-bold ${getGradeColor(Math.round((score! / assignment.pointsPossible) * 100))}`}>
+              {score}/{assignment.pointsPossible}
+            </span>
+          )}
+          {submission?.missing && <span className="text-xs text-red-500 font-medium">Missing</span>}
+          <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
+
+      {open && (
+        <div className="px-3 pb-3 pt-1 border-t border-border space-y-3">
+          {/* First Move */}
+          <FirstMoveButton assignment={assignment} />
+
+          {/* What-if only for ungraded */}
+          {!isGraded && (
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground">What if I score...</p>
+              <Slider
+                value={[whatIfScore ?? 0]}
+                onValueChange={([v]) => setWhatIfScore(Math.round(v * 2) / 2)}
+                min={0} max={assignment.pointsPossible} step={0.5}
+                className="w-full cursor-pointer"
+              />
+              {whatIfGrade !== null && (
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">
+                    Course grade would be <span className={`font-bold ${getGradeColor(whatIfGrade)}`}>{whatIfGrade}%</span>
+                    {delta !== null && <span className={`ml-1 ${delta >= 0 ? 'text-green-500' : 'text-red-500'}`}>({delta >= 0 ? '+' : ''}{delta}%)</span>}
                   </p>
+                  <button className="text-xs text-muted-foreground hover:text-foreground cursor-pointer" onClick={() => setWhatIfScore(null)}>Clear</button>
                 </div>
               )}
-            </>
+            </div>
+          )}
+
+          {/* Description */}
+          {assignment.description && (
+            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3"
+              dangerouslySetInnerHTML={{ __html: assignment.description.slice(0, 300) }}
+            />
           )}
         </div>
-
-        {/* Upcoming assignments */}
-        {ungradedAssignments.length > 0 && (
-          <div className="space-y-3">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Upcoming — what if I score...</p>
-            {ungradedAssignments.map((a) => {
-              const value = hypotheticalScores[a.id];
-              const pct = value !== undefined ? Math.round((value / a.pointsPossible) * 100) : null;
-              return (
-                <div key={a.id} className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm truncate flex-1 mr-2">{a.name}</p>
-                    <span className="text-xs text-muted-foreground flex-shrink-0">
-                      {value !== undefined ? `${value} / ${a.pointsPossible} pts` : `-- / ${a.pointsPossible} pts`}
-                      {pct !== null && <span className="ml-1 text-muted-foreground">({pct}%)</span>}
-                    </span>
-                  </div>
-                  <Slider
-                    min={0} max={a.pointsPossible} step={0.5}
-                    value={[value ?? 0]}
-                    onValueChange={([v]) => setHypotheticalScores(prev => ({ ...prev, [a.id]: Math.round(v * 2) / 2 }))}
-                    className="w-full cursor-pointer"
-                  />
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Completed assignments - override */}
-        {gradedAssignments.length > 0 && (
-          <div className="space-y-3">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Completed — drag to override</p>
-            {gradedAssignments.map((a) => {
-              const realSub = allSubmissions.find(s => s.assignmentId === a.id);
-              const realScore = realSub?.score ?? 0;
-              const hypo = hypotheticalScores[a.id];
-              const value = hypo !== undefined ? hypo : realScore;
-              const isOverridden = hypo !== undefined && Math.abs(hypo - realScore) > 0.1;
-              const pct = Math.round((value / a.pointsPossible) * 100);
-              return (
-                <div key={a.id} className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <p className={`text-sm truncate flex-1 mr-2 ${isOverridden ? "font-medium" : "text-muted-foreground"}`}>
-                      {a.name}
-                      {isOverridden && <span className="ml-1.5 text-xs text-amber-500">overridden</span>}
-                    </p>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {isOverridden && (
-                        <button className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-                          onClick={() => { const n = {...hypotheticalScores}; delete n[a.id]; setHypotheticalScores(n); }}>
-                          Reset
-                        </button>
-                      )}
-                      <span className="text-xs text-muted-foreground">{value} / {a.pointsPossible} pts ({pct}%)</span>
-                    </div>
-                  </div>
-                  <Slider
-                    min={0} max={a.pointsPossible} step={0.5}
-                    value={[value]}
-                    onValueChange={([v]) => setHypotheticalScores(prev => ({ ...prev, [a.id]: Math.round(v * 2) / 2 }))}
-                    className="w-full cursor-pointer"
-                  />
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      )}
+    </div>
   );
 }
-// --- First Move Button (inline in course assignment list) ---
+
+// ─── First Move Button ─────────────────────────────────────────────────────
 
 function FirstMoveButton({ assignment }: { assignment: Assignment }) {
   const [result, setResult] = useState<{ plain: string; firstStep: string; timeEstimate: string } | null>(null);
@@ -559,221 +360,166 @@ function FirstMoveButton({ assignment }: { assignment: Assignment }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleClick = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (open) { setOpen(false); return; }
+  const handle = async () => {
+    if (open && result) { setOpen(false); return; }
     setOpen(true);
-    if (result) return; // already loaded
+    if (result || loading) return;
 
     if (!hasAIKey()) {
-      setError('Add your API key in Settings () to use First Move.');
+      setError('Add your Anthropic API key in Settings to use this feature.');
       return;
     }
 
     setLoading(true);
     try {
       const prompt = `Assignment: "${assignment.name}"
-Course: ${assignment.courseName || assignment.courseCode}
 Points: ${assignment.pointsPossible}
 Due: ${assignment.dueDate ? new Date(assignment.dueDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'No due date'}
-Submission type: ${assignment.submissionTypes?.join(', ') || 'unknown'}
-Description: ${assignment.description ? assignment.description.replace(/<[^>]+>/g, '').slice(0, 500) : 'No description provided'}`;
+Description: ${assignment.description ? assignment.description.replace(/<[^>]+>/g, '').slice(0, 400) : 'No description'}`;
 
-      const response = await callClaude(
-        prompt,
-        `You help students beat procrastination by making assignments feel small and concrete.
-Given an assignment, return ONLY valid JSON with exactly these three fields:
-{
-  "plain": "One sentence in plain English describing what the student actually has to do — no academic jargon. Start with a verb.",
-  "firstStep": "The single most concrete first physical action the student can take RIGHT NOW that takes under 2 minutes. One tiny action only.",
-  "timeEstimate": "A realistic time estimate like 'About 45 minutes' or 'Plan for 2 hours'."
-}
-Return ONLY the JSON object. No explanation, no markdown, no extra text.`,
-        400
-      );
+      const response = await callClaude(prompt,
+        `You help students start assignments. Return ONLY valid JSON:
+{"plain":"One sentence what the student actually has to do. Start with a verb.","firstStep":"The single first physical action taking under 2 minutes.","timeEstimate":"Realistic time like 'About 45 minutes'"}`,
+        400);
+
       const parsed = JSON.parse(response.replace(/```json|```/g, '').trim());
-      if (parsed.plain && parsed.firstStep && parsed.timeEstimate) {
-        setResult(parsed);
-      }
-    } catch {
-      setError('Could not generate. Try again.');
+      if (parsed.plain && parsed.firstStep && parsed.timeEstimate) setResult(parsed);
+      else throw new Error('Bad response');
+    } catch (err: any) {
+      const msg = err?.message || '';
+      setError(msg === 'NO_API_KEY' ? 'Add your API key in Settings.' : 'Could not generate. Try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="relative" onClick={e => e.stopPropagation()}>
-      <button
-        onClick={handleClick}
-        className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full border cursor-pointer transition-colors ${
-          open ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/20'
-        }`}
-      >
+    <div>
+      <button onClick={handle}
+        className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border cursor-pointer transition-colors ${open ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}>
         {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
         How do I start?
       </button>
 
       {open && (
-        <div className="absolute right-0 top-8 z-50 w-72 bg-popover border border-border rounded-lg shadow-xl p-3 space-y-2.5">
+        <div className="mt-2 rounded-lg bg-primary/5 border border-primary/20 p-3 space-y-2">
           {error ? (
-            <p className="text-xs text-red-500">{error}</p>
+            <p className="text-xs text-muted-foreground">{error}</p>
           ) : loading ? (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Thinking...
-            </div>
+            <p className="text-xs text-muted-foreground">Thinking...</p>
           ) : result && (
             <>
-              <p className="text-xs text-muted-foreground leading-relaxed">{result.plain}</p>
-              <div className="space-y-1">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-primary">Do this right now</p>
-                <p className="text-sm font-medium leading-snug">{result.firstStep}</p>
+              <p className="text-xs text-muted-foreground">{result.plain}</p>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-primary mb-0.5">Do this right now</p>
+                <p className="text-sm font-medium">{result.firstStep}</p>
               </div>
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground border-t border-border pt-2">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground pt-1 border-t border-border">
                 <Clock className="h-3 w-3" />
                 <span>{result.timeEstimate}</span>
               </div>
             </>
           )}
-          <button onClick={() => setOpen(false)} className="text-[10px] text-muted-foreground hover:text-foreground cursor-pointer underline">
-            Close
-          </button>
+          <button onClick={() => setOpen(false)} className="text-[10px] text-muted-foreground hover:text-foreground cursor-pointer underline">Close</button>
         </div>
       )}
     </div>
   );
 }
 
+// ─── Grade Simulator ───────────────────────────────────────────────────────
 
-// --- Assignment Detail ---
-
-function AssignmentDetail({
-  assignment,
-  submission,
-}: {
-  assignment: Assignment;
-  submission?: Submission;
+function GradeSimulator({ assignments, submissions, currentGrade }: {
+  assignments: Assignment[];
+  submissions: Submission[];
+  currentGrade: number | null;
 }) {
-  const [chunks, setChunks] = useState<string[]>([]);
-  const [checkedChunks, setCheckedChunks] = useState<Set<number>>(new Set());
-  const [isChunking, setIsChunking] = useState(false);
-  const [chunkError, setChunkError] = useState<string | null>(null);
+  const [scores, setScores] = useState<Record<string, number>>({});
 
-  const handleBreakDown = async () => {
-    if (!hasAIKey()) {
-      setChunkError('Add your Anthropic API key in Integrations to use AI features.');
-      return;
+  const eligible = assignments.filter(a => a.pointsPossible > 0);
+  const graded = eligible.filter(a => { const s = submissions.find(x => x.assignmentId === a.id); return s?.score !== null && s?.score !== undefined; });
+  const ungraded = eligible.filter(a => { const s = submissions.find(x => x.assignmentId === a.id); return s?.score === null || s?.score === undefined; });
+
+  const projected = useMemo(() => {
+    let e = 0, p = 0;
+    for (const a of eligible) {
+      if (!a.pointsPossible) continue;
+      const hypo = scores[a.id];
+      if (hypo !== undefined) { e += hypo; p += a.pointsPossible; }
+      else { const sub = submissions.find(s => s.assignmentId === a.id); if (sub?.score !== null && sub?.score !== undefined) { e += sub.score; p += a.pointsPossible; } }
     }
+    return p > 0 ? Math.round((e / p) * 1000) / 10 : null;
+  }, [scores, eligible, submissions]);
 
-    setIsChunking(true);
-    setChunkError(null);
+  const delta = projected !== null && currentGrade !== null ? Math.round((projected - currentGrade) * 10) / 10 : null;
 
-    try {
-      const steps = await chunkAssignment(
-        assignment.name,
-        stripHtml(assignment.description || '')
-      );
-      setChunks(steps);
-    } catch (error) {
-      if (error instanceof Error && error.message === 'NO_API_KEY') {
-        setChunkError('Add your Anthropic API key in Integrations to use AI features.');
-      } else if (error instanceof Error && error.message === 'INVALID_API_KEY') {
-        setChunkError('Invalid API key. Please check your Anthropic API key.');
-      } else {
-        setChunkError('Failed to break down assignment. Please try again.');
-      }
-    } finally {
-      setIsChunking(false);
-    }
-  };
-
-  const toggleChunk = (index: number) => {
-    setCheckedChunks((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(index)) {
-        newSet.delete(index);
-      } else {
-        newSet.add(index);
-      }
-      return newSet;
-    });
-  };
-
-  function stripHtml(html: string): string {
-    if (typeof document === 'undefined') return html;
-    const div = document.createElement('div');
-    div.innerHTML = html;
-    return div.textContent || div.innerText || '';
-  }
-
-  const progress =
-    chunks.length > 0 ? Math.round((checkedChunks.size / chunks.length) * 100) : 0;
+  if (eligible.length === 0) return null;
 
   return (
-    <div className="space-y-4 pt-2">
-      {assignment.description && (
-        <div className="text-sm text-muted-foreground">
-          <p className="line-clamp-3">{stripHtml(assignment.description)}</p>
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <CardTitle className="text-sm font-medium">Grade Simulator</CardTitle>
+          <HelpTip text="Drag sliders to see how different scores would affect your course grade. Upcoming assignments let you set hypothetical scores. Completed assignments can be overridden." />
+          {Object.keys(scores).length > 0 && (
+            <button onClick={() => setScores({})} className="ml-auto text-xs text-muted-foreground hover:text-foreground cursor-pointer underline">Reset</button>
+          )}
         </div>
-      )}
-
-      <div className="space-y-2">
-        {chunks.length === 0 ? (
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleBreakDown}
-              disabled={isChunking}
-            >
-              <Sparkles className="w-3 h-3 mr-2" />
-              {isChunking ? 'Breaking down...' : 'Break This Down'}
-            </Button>
-            {chunkError && (
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" />
-                {chunkError}
-              </p>
-            )}
-          </>
-        ) : (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-[oklch(var(--grade-safe))] transition-all duration-300"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              <span className="text-xs text-muted-foreground">{progress}%</span>
-            </div>
-
-            <div className="space-y-1">
-              {chunks.map((chunk, i) => (
-                <label
-                  key={i}
-                  className={`flex items-start gap-2 p-2 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors ${
-                    checkedChunks.has(i) ? 'bg-muted/30' : ''
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checkedChunks.has(i)}
-                    onChange={() => toggleChunk(i)}
-                    className="mt-0.5"
-                  />
-                  <span
-                    className={`text-sm ${checkedChunks.has(i) ? 'line-through text-muted-foreground' : ''}`}
-                  >
-                    {chunk}
-                  </span>
-                </label>
-              ))}
-            </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {projected !== null && (
+          <div className="flex items-center gap-4 p-3 bg-muted/40 rounded-lg">
+            <div><p className="text-xs text-muted-foreground">Current</p><p className={`text-lg font-bold ${getGradeColor(currentGrade)}`} data-grade="true">{currentGrade !== null ? `${currentGrade}%` : 'N/A'}</p></div>
+            <div className="text-muted-foreground">→</div>
+            <div><p className="text-xs text-muted-foreground">Projected</p><p className={`text-lg font-bold ${getGradeColor(projected)}`} data-grade="true">{projected}%</p></div>
+            {delta !== null && <div><p className="text-xs text-muted-foreground">Change</p><p className={`text-lg font-bold ${delta >= 0 ? 'text-green-500' : 'text-red-500'}`}>{delta >= 0 ? '+' : ''}{delta}%</p></div>}
           </div>
         )}
-      </div>
-    </div>
+
+        {ungraded.length > 0 && (
+          <div className="space-y-3">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Upcoming — what if I score...</p>
+            {ungraded.map(a => (
+              <div key={a.id} className="space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="truncate flex-1 mr-2">{a.name}</span>
+                  <span className="text-muted-foreground flex-shrink-0">{scores[a.id] !== undefined ? `${scores[a.id]} / ${a.pointsPossible}` : `-- / ${a.pointsPossible}`}</span>
+                </div>
+                <Slider min={0} max={a.pointsPossible} step={0.5} value={[scores[a.id] ?? 0]}
+                  onValueChange={([v]) => setScores(p => ({ ...p, [a.id]: Math.round(v * 2) / 2 }))}
+                  className="cursor-pointer" />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {graded.length > 0 && (
+          <div className="space-y-3">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Completed — drag to override</p>
+            {graded.map(a => {
+              const realScore = submissions.find(s => s.assignmentId === a.id)?.score ?? 0;
+              const val = scores[a.id] !== undefined ? scores[a.id] : realScore;
+              const isOverridden = scores[a.id] !== undefined && Math.abs(scores[a.id] - realScore) > 0.1;
+              return (
+                <div key={a.id} className="space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span className={`truncate flex-1 mr-2 ${isOverridden ? 'font-medium' : 'text-muted-foreground'}`}>
+                      {a.name}{isOverridden && <span className="ml-1 text-amber-500">overridden</span>}
+                    </span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {isOverridden && <button className="text-muted-foreground hover:text-foreground cursor-pointer underline" onClick={() => { const n = {...scores}; delete n[a.id]; setScores(n); }}>Reset</button>}
+                      <span className="text-muted-foreground">{val} / {a.pointsPossible}</span>
+                    </div>
+                  </div>
+                  <Slider min={0} max={a.pointsPossible} step={0.5} value={[val]}
+                    onValueChange={([v]) => setScores(p => ({ ...p, [a.id]: Math.round(v * 2) / 2 }))}
+                    className="cursor-pointer" />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
