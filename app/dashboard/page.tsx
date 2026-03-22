@@ -29,13 +29,17 @@ function DashboardContent() {
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
 
   // Shared data — loaded once, passed as props to all tabs
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [allAssignments, setAllAssignments] = useState<Assignment[]>([]);
-  const [allSubmissions, setAllSubmissions] = useState<Submission[]>([]);
+  // Try to restore cached data immediately to avoid reload on navigation
+  const getCached = (key: string) => {
+    try { const v = sessionStorage.getItem(key); return v ? JSON.parse(v) : null; } catch { return null; }
+  };
+  const [courses, setCourses] = useState<Course[]>(() => getCached('gradeos-courses') || []);
+  const [allAssignments, setAllAssignments] = useState<Assignment[]>(() => getCached('gradeos-assignments') || []);
+  const [allSubmissions, setAllSubmissions] = useState<Submission[]>(() => getCached('gradeos-submissions') || []);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => !(getCached('gradeos-courses')?.length > 0));
   const [error, setError] = useState<string | null>(null);
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(() => !!(getCached('gradeos-courses')?.length > 0));
 
   // Handle URL params for tab
   useEffect(() => {
@@ -95,6 +99,12 @@ function DashboardContent() {
       setCourses(coursesWithGrades);
       setError(null);
       setHasLoadedOnce(true);
+      // Cache to survive navigation to /todos and back
+      try {
+        sessionStorage.setItem('gradeos-courses', JSON.stringify(coursesWithGrades));
+        sessionStorage.setItem('gradeos-assignments', JSON.stringify(allAssignmentsFlat));
+        sessionStorage.setItem('gradeos-submissions', JSON.stringify(allSubmissionsFlat));
+      } catch {}
 
       if (connection.connected) {
         const announcementsData = await fetchAnnouncements(

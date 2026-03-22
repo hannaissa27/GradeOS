@@ -58,6 +58,9 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
     ...customAssignments,
   ];
 
+  // Check if course uses weighted categories
+  const hasWeights = assignments.some(a => (a as any).assignmentGroupWeight > 0);
+
   // Points already earned
   const earnedPoints = useMemo(() => {
     let earned = 0;
@@ -183,6 +186,11 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
 
         {/* Remaining assignments summary + note about Canvas lag */}
         <div className="space-y-1.5">
+          {hasWeights && (
+            <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded px-2 py-1">
+              This course uses weighted categories — scores shown are approximate point-based estimates. Your actual grade depends on category weights set by your teacher.
+            </div>
+          )}
           <div className="text-xs text-muted-foreground">
             <span className="font-medium text-foreground">{allFuture.length}</span> assignments on Canvas remaining
             {' · '}<span className="font-medium text-foreground">{futurePossible} pts</span> still up for grabs
@@ -246,7 +254,7 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
                   <span className="text-primary font-medium">{a.name}</span>
                   <div className="flex items-center gap-2">
                     <span className="text-muted-foreground">{a.pointsPossible} pts</span>
-                    <button onClick={() => removeCustom(a.id)} className="text-muted-foreground hover:text-destructive cursor-pointer"></button>
+                    <button onClick={() => removeCustom(a.id)} className="text-xs text-muted-foreground hover:text-destructive cursor-pointer px-1 font-bold leading-none">Remove</button>
                   </div>
                 </div>
               ))}

@@ -31,7 +31,7 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
-type FilterOption = 'all' | 'today' | 'high' | 'course';
+type FilterOption = 'all' | 'today' | 'tomorrow' | 'this-week' | 'high' | 'medium' | 'low' | 'no-date' | 'completed' | 'course';
 
 function SortableTodoCard({ 
   todo, 
@@ -200,15 +200,29 @@ export default function TodosPage() {
     const now = new Date();
     const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
 
+    const now = new Date();
+    const tomorrowStart = new Date(now); tomorrowStart.setDate(now.getDate()+1); tomorrowStart.setHours(0,0,0,0);
+    const tomorrowEnd = new Date(now); tomorrowEnd.setDate(now.getDate()+1); tomorrowEnd.setHours(23,59,59,999);
+    const weekEnd = new Date(now); weekEnd.setDate(now.getDate()+7); weekEnd.setHours(23,59,59,999);
+
     return todos.filter(todo => {
+      if (filter === 'completed') return todo.completed;
       if (!showCompleted && todo.completed) return false;
-      
       switch (filter) {
         case 'today':
-          if (!todo.dueDate) return false;
-          return new Date(todo.dueDate) <= todayEnd;
+          return !!todo.dueDate && new Date(todo.dueDate) <= todayEnd;
+        case 'tomorrow':
+          return !!todo.dueDate && new Date(todo.dueDate) >= tomorrowStart && new Date(todo.dueDate) <= tomorrowEnd;
+        case 'this-week':
+          return !!todo.dueDate && new Date(todo.dueDate) <= weekEnd;
+        case 'no-date':
+          return !todo.dueDate;
         case 'high':
           return todo.priority === 'high';
+        case 'medium':
+          return todo.priority === 'medium';
+        case 'low':
+          return todo.priority === 'low';
         case 'course':
           return !!todo.courseTag;
         default:
@@ -374,17 +388,24 @@ export default function TodosPage() {
           <div className="space-y-4">
             {/* Filters */}
             <div className="flex items-center gap-2 flex-wrap">
-              {(['all', 'today', 'high', 'course'] as const).map(f => (
+              {([
+                { id: 'all', label: 'All' },
+                { id: 'today', label: 'Due today' },
+                { id: 'tomorrow', label: 'Due tomorrow' },
+                { id: 'this-week', label: 'This week' },
+                { id: 'no-date', label: 'No date' },
+                { id: 'high', label: 'High priority' },
+                { id: 'medium', label: 'Medium' },
+                { id: 'low', label: 'Low priority' },
+                { id: 'completed', label: 'Completed' },
+              ] as { id: FilterOption; label: string }[]).map(f => (
                 <Button
-                  key={f}
-                  variant={filter === f ? 'default' : 'outline'}
+                  key={f.id}
+                  variant={filter === f.id ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setFilter(f)}
+                  onClick={() => setFilter(f.id)}
                 >
-                  {f === 'all' && 'All'}
-                  {f === 'today' && 'Today'}
-                  {f === 'high' && 'High Priority'}
-                  {f === 'course' && 'By Course'}
+                  {f.label}
                 </Button>
               ))}
             </div>
