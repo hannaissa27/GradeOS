@@ -49,10 +49,14 @@ const FAILURE_BG: Record<FailureType, string> = {
 
 export function GradeAutopsy({ courses, allAssignments, allSubmissions }: GradeAutopsyProps) {
   const [sessions, setSessions] = useState<Map<string, AutopsySession>>(new Map());
-  const [dismissed, setDismissed] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('gradeos-autopsy-dismissed') || '[]')); }
-    catch { return new Set(); }
-  });
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  
+  React.useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('gradeos-autopsy-dismissed') || '[]');
+      setDismissed(new Set(saved));
+    } catch {}
+  }, []);
 
   const dismiss = (assignmentId: string) => {
     const next = new Set(dismissed);
@@ -215,10 +219,15 @@ Return ONLY the JSON. No markdown, no extra text.`,
           assignmentName: candidate.assignment.name,
         },
       });
-    } catch {
+    } catch (err: any) {
+      const msg = err?.message || '';
       setSession(assignmentId, {
         step: 'result',
-        error: 'Analysis failed. Try again.',
+        error: msg === 'NO_API_KEY'
+          ? 'No API key set. Go to Settings to add your Anthropic key.'
+          : msg === 'INVALID_API_KEY'
+          ? 'Invalid API key. Check your key in Settings.'
+          : 'Analysis failed — check your API key in Settings and try again.',
       });
     }
   };
@@ -267,12 +276,18 @@ Return ONLY the JSON. No markdown, no extra text.`,
                 <p className="text-xs text-muted-foreground mb-2">
                   Something went wrong here. Let's figure out what — takes 10 seconds.
                 </p>
-                <button
-                  onClick={() => setSession(assignment.id, { assignmentId: assignment.id, step: 'q1' })}
-                  className="flex items-center gap-1.5 text-xs font-medium text-red-500 hover:text-red-600 cursor-pointer transition-colors"
-                >
-                  Run autopsy <ChevronRight className="h-3 w-3" />
-                </button>
+                {!hasAIKey() ? (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    Add your Anthropic API key in <strong>Settings</strong> to run the analysis.
+                  </p>
+                ) : (
+                  <button
+                    onClick={() => setSession(assignment.id, { assignmentId: assignment.id, step: 'q1' })}
+                    className="flex items-center gap-1.5 text-xs font-medium text-red-500 hover:text-red-600 cursor-pointer transition-colors"
+                  >
+                    Run autopsy <ChevronRight className="h-3 w-3" />
+                  </button>
+                )}
               </div>
             ) : session.step === 'q1' ? (
               /* Q1: Study timing */

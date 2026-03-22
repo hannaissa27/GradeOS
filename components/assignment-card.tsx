@@ -113,10 +113,13 @@ Return ONLY the JSON object. No explanation, no markdown, no extra text.`,
         throw new Error('Incomplete response');
       }
     } catch (err: any) {
-      if (err.message === 'NO_API_KEY' || err.message === 'INVALID_API_KEY') {
+      const msg = err?.message || '';
+      if (msg === 'NO_API_KEY') {
+        setFirstMoveError('No API key set. Go to Settings and add your Anthropic key.');
+      } else if (msg === 'INVALID_API_KEY') {
         setFirstMoveError('Invalid API key. Check your key in Settings.');
       } else {
-        setFirstMoveError('Could not generate. Try again.');
+        setFirstMoveError('Could not generate. Check your API key in Settings.');
       }
     } finally {
       setFirstMoveLoading(false);

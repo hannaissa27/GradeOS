@@ -34,9 +34,13 @@ export function ScheduleTab({
   const [blocksLoading, setBlocksLoading] = useState(true);
   const [draggedAssignment, setDraggedAssignment] = useState<Assignment | null>(null);
   const [dropError, setDropError] = useState<string | null>(null);
-  const [pinnedIds, setPinnedIds] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('gradeos-schedule-pinned') || '[]')); } catch { return new Set(); }
-  });
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('gradeos-schedule-pinned') || '[]');
+      setPinnedIds(new Set(saved));
+    } catch {}
+  }, []);
 
   const weekDates = useMemo(() => {
     const today = new Date();

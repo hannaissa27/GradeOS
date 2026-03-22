@@ -13,7 +13,7 @@ interface ConnectionModalProps {
 
 export function ConnectionModal({ open, onOpenChange }: ConnectionModalProps) {
   const { connectWithToken, error } = useCanvas();
-  const [canvasUrl, setCanvasUrl] = useState('https://alkhazneh.instructure.com');
+  const [canvasUrl, setCanvasUrl] = useState('https://canvas.instructure.com');
   const [token, setToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);

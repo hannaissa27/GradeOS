@@ -147,9 +147,9 @@ export async function fetchCourses(connection: CanvasConnection): Promise<Course
         return true;
       })
       .map((course) => ({
-        id: course.id.toString(),
+        id: (course.id != null ? String(course.id) : ""),
         name: course.name || 'Unnamed Course',
-        code: course.course_code || course.id.toString(),
+        code: course.course_code || (course.id != null ? String(course.id) : ""),
         enrollmentState: course.enrollment_state || 'active',
         currentGrade: null, // Will be computed from actual submissions, not Canvas's cumulative score
         finalGrade: course.enrollments?.[0]?.computed_final_score ?? null,
@@ -207,7 +207,7 @@ export async function fetchAssignments(courseId: string, connection: CanvasConne
         return new Date(a.due_at) >= semesterStart;
       })
       .map((a: any) => ({
-        id: a.id.toString(),
+        id: (a.id != null ? String(a.id) : ""),
         courseId,
         courseName: '',
         courseCode: '',
@@ -254,9 +254,9 @@ export async function fetchSubmissions(courseId: string, connection: CanvasConne
         return new Date(a.due_at) >= semStart;
       })
       .map((a: any) => ({
-        id: a.submission.id?.toString() || a.id.toString(),
-        userId: a.submission.user_id?.toString() || '',
-        assignmentId: a.id.toString(),
+        id: (a.submission.id != null ? String(a.submission.id) : "") || (a.id != null ? String(a.id) : ""),
+        userId: (a.submission.user_id != null ? String(a.submission.user_id) : "") || '',
+        assignmentId: (a.id != null ? String(a.id) : ""),
         courseId,
         score: a.submission.score ?? null,
         grade: a.submission.grade || null,
@@ -309,13 +309,13 @@ export async function fetchAnnouncements(courseIds: string[], connection: Canvas
         const postedAt = new Date(item.posted_at);
         if (postedAt >= twoWeeksAgo) {
           announcements.push({
-            id: item.id.toString(),
+            id: (item.id != null ? String(item.id) : ""),
             courseId,
             title: item.title,
             message: item.message,
             postedAt: item.posted_at,
             author: {
-              id: item.user_id.toString(),
+              id: (item.user_id != null ? String(item.user_id) : ""),
               name: item.user?.name || 'Professor',
             },
           });
@@ -339,7 +339,7 @@ export async function fetchModuleFiles(courseId: string, connection: CanvasConne
     );
 
     return files.map((file) => ({
-      id: file.id.toString(),
+      id: (file.id != null ? String(file.id) : ""),
       courseId,
       name: file.filename,
       url: file.url,
