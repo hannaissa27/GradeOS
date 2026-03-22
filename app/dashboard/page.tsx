@@ -115,9 +115,19 @@ function DashboardContent() {
     }
   }, [connection, hasLoadedOnce]);
 
+  // Load once on mount, then only when user explicitly syncs
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (!hasLoadedOnce) {
+      loadData();
+    }
+  }, []); // empty deps - only run once on mount
+
+  // Also reload when connection changes (user connects/disconnects)
+  useEffect(() => {
+    if (connection.connected) {
+      loadData();
+    }
+  }, [connection.connected]); // eslint-disable-line
 
   // Auto-dismiss error after 8 seconds
   useEffect(() => {

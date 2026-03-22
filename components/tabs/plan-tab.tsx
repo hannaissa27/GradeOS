@@ -427,7 +427,7 @@ Description: ${assignment.description ? assignment.description.replace(/<[^>]+>/
   );
 }
 
-// ─── Grade Simulator ───────────────────────────────────────────────────────
+// ─── Grade Simulator ────────────────────────────────────────────────────────
 
 function GradeSimulator({ assignments, submissions, currentGrade }: {
   assignments: Assignment[];
@@ -435,10 +435,17 @@ function GradeSimulator({ assignments, submissions, currentGrade }: {
   currentGrade: number | null;
 }) {
   const [scores, setScores] = useState<Record<string, number>>({});
+  const [showCompleted, setShowCompleted] = useState(false);
 
   const eligible = assignments.filter(a => a.pointsPossible > 0);
-  const graded = eligible.filter(a => { const s = submissions.find(x => x.assignmentId === a.id); return s?.score !== null && s?.score !== undefined; });
-  const ungraded = eligible.filter(a => { const s = submissions.find(x => x.assignmentId === a.id); return s?.score === null || s?.score === undefined; });
+  const ungraded = eligible.filter(a => {
+    const s = submissions.find(x => x.assignmentId === a.id);
+    return s?.score === null || s?.score === undefined;
+  });
+  const graded = eligible.filter(a => {
+    const s = submissions.find(x => x.assignmentId === a.id);
+    return s?.score !== null && s?.score !== undefined;
+  });
 
   const projected = useMemo(() => {
     let e = 0, p = 0;
@@ -446,77 +453,136 @@ function GradeSimulator({ assignments, submissions, currentGrade }: {
       if (!a.pointsPossible) continue;
       const hypo = scores[a.id];
       if (hypo !== undefined) { e += hypo; p += a.pointsPossible; }
-      else { const sub = submissions.find(s => s.assignmentId === a.id); if (sub?.score !== null && sub?.score !== undefined) { e += sub.score; p += a.pointsPossible; } }
+      else {
+        const sub = submissions.find(s => s.assignmentId === a.id);
+        if (sub?.score !== null && sub?.score !== undefined) { e += sub.score; p += a.pointsPossible; }
+      }
     }
     return p > 0 ? Math.round((e / p) * 1000) / 10 : null;
   }, [scores, eligible, submissions]);
 
-  const delta = projected !== null && currentGrade !== null ? Math.round((projected - currentGrade) * 10) / 10 : null;
+  const delta = projected !== null && currentGrade !== null
+    ? Math.round((projected - currentGrade) * 10) / 10 : null;
+  const hasAny = Object.keys(scores).length > 0;
+  const overriddenCount = graded.filter(a => scores[a.id] !== undefined).length;
 
   if (eligible.length === 0) return null;
 
   return (
     <Card>
       <CardHeader className="pb-3">
-        <div className="flex items-center gap-2">
-          <CardTitle className="text-sm font-medium">Grade Simulator</CardTitle>
-          <HelpTip text="Drag sliders to see how different scores would affect your course grade. Upcoming assignments let you set hypothetical scores. Completed assignments can be overridden." />
-          {Object.keys(scores).length > 0 && (
-            <button onClick={() => setScores({})} className="ml-auto text-xs text-muted-foreground hover:text-foreground cursor-pointer underline">Reset</button>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-sm font-medium">Grade Simulator</CardTitle>
+            <HelpTip text="Set a hypothetical score on any upcoming assignment to see how your course grade would change. You can also expand completed assignments to override them and run what-if scenarios." />
+          </div>
+          {hasAny && (
+            <button onClick={() => setScores({})} className="text-xs text-muted-foreground hover:text-foreground cursor-pointer underline">Reset all</button>
           )}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {projected !== null && (
-          <div className="flex items-center gap-4 p-3 bg-muted/40 rounded-lg">
-            <div><p className="text-xs text-muted-foreground">Current</p><p className={`text-lg font-bold ${getGradeColor(currentGrade)}`} data-grade="true">{currentGrade !== null ? `${currentGrade}%` : 'N/A'}</p></div>
+
+        {/* Grade impact summary */}
+        {hasAny && projected !== null ? (
+          <div className="flex items-center gap-6 p-3 bg-muted/40 rounded-lg">
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Current</p>
+              <p className={`text-xl font-bold ${getGradeColor(currentGrade)}`} data-grade="true">
+                {currentGrade !== null ? `${currentGrade}%` : 'N/A'}
+              </p>
+            </div>
             <div className="text-muted-foreground">→</div>
-            <div><p className="text-xs text-muted-foreground">Projected</p><p className={`text-lg font-bold ${getGradeColor(projected)}`} data-grade="true">{projected}%</p></div>
-            {delta !== null && <div><p className="text-xs text-muted-foreground">Change</p><p className={`text-lg font-bold ${delta >= 0 ? 'text-green-500' : 'text-red-500'}`}>{delta >= 0 ? '+' : ''}{delta}%</p></div>}
-          </div>
-        )}
-
-        {ungraded.length > 0 && (
-          <div className="space-y-3">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Upcoming — what if I score...</p>
-            {ungraded.map(a => (
-              <div key={a.id} className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="truncate flex-1 mr-2">{a.name}</span>
-                  <span className="text-muted-foreground flex-shrink-0">{scores[a.id] !== undefined ? `${scores[a.id]} / ${a.pointsPossible}` : `-- / ${a.pointsPossible}`}</span>
-                </div>
-                <Slider min={0} max={a.pointsPossible} step={0.5} value={[scores[a.id] ?? 0]}
-                  onValueChange={([v]) => setScores(p => ({ ...p, [a.id]: Math.round(v * 2) / 2 }))}
-                  className="cursor-pointer" />
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Projected</p>
+              <p className={`text-xl font-bold ${getGradeColor(projected)}`} data-grade="true">{projected}%</p>
+            </div>
+            {delta !== null && (
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Change</p>
+                <p className={`text-xl font-bold ${delta >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {delta >= 0 ? '+' : ''}{delta}%
+                </p>
               </div>
-            ))}
+            )}
           </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            {ungraded.length > 0
+              ? 'Drag a slider below to see how a hypothetical score would affect your grade.'
+              : 'All assignments graded. Expand completed assignments below to override scores.'}
+          </p>
         )}
 
-        {graded.length > 0 && (
-          <div className="space-y-3">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Completed — drag to override</p>
-            {graded.map(a => {
-              const realScore = submissions.find(s => s.assignmentId === a.id)?.score ?? 0;
-              const val = scores[a.id] !== undefined ? scores[a.id] : realScore;
-              const isOverridden = scores[a.id] !== undefined && Math.abs(scores[a.id] - realScore) > 0.1;
+        {/* Upcoming — main use case */}
+        {ungraded.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground">Upcoming</p>
+            {ungraded.map(a => {
+              const val = scores[a.id];
+              const pct = val !== undefined ? Math.round((val / a.pointsPossible) * 100) : null;
               return (
-                <div key={a.id} className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className={`truncate flex-1 mr-2 ${isOverridden ? 'font-medium' : 'text-muted-foreground'}`}>
-                      {a.name}{isOverridden && <span className="ml-1 text-amber-500">overridden</span>}
+                <div key={a.id} className="rounded-lg border border-border p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs font-medium leading-snug flex-1">{a.name}</p>
+                    <span className="text-xs text-muted-foreground font-mono flex-shrink-0">
+                      {val !== undefined ? `${val}` : '—'} / {a.pointsPossible}
+                      {pct !== null && <span className={`ml-1.5 font-bold ${getGradeColor(pct)}`}> ({pct}%)</span>}
                     </span>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {isOverridden && <button className="text-muted-foreground hover:text-foreground cursor-pointer underline" onClick={() => { const n = {...scores}; delete n[a.id]; setScores(n); }}>Reset</button>}
-                      <span className="text-muted-foreground">{val} / {a.pointsPossible}</span>
-                    </div>
                   </div>
-                  <Slider min={0} max={a.pointsPossible} step={0.5} value={[val]}
+                  <Slider min={0} max={a.pointsPossible} step={0.5}
+                    value={[val ?? 0]}
                     onValueChange={([v]) => setScores(p => ({ ...p, [a.id]: Math.round(v * 2) / 2 }))}
                     className="cursor-pointer" />
+                  {val !== undefined && (
+                    <button className="text-[10px] text-muted-foreground hover:text-foreground cursor-pointer"
+                      onClick={() => { const n = {...scores}; delete n[a.id]; setScores(n); }}>
+                      Clear
+                    </button>
+                  )}
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Completed — collapsed by default */}
+        {graded.length > 0 && (
+          <div>
+            <button
+              onClick={() => setShowCompleted(v => !v)}
+              className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer w-full py-1"
+            >
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showCompleted ? 'rotate-180' : ''}`} />
+              <span>Override completed assignments ({graded.length})</span>
+              {overriddenCount > 0 && <span className="ml-auto text-amber-500">{overriddenCount} overridden</span>}
+            </button>
+            {showCompleted && (
+              <div className="mt-2 space-y-2">
+                {graded.map(a => {
+                  const realScore = submissions.find(s => s.assignmentId === a.id)?.score ?? 0;
+                  const val = scores[a.id] !== undefined ? scores[a.id] : realScore;
+                  const isOverridden = scores[a.id] !== undefined && Math.abs(scores[a.id] - realScore) > 0.1;
+                  return (
+                    <div key={a.id} className={`rounded-lg border p-3 space-y-2 ${isOverridden ? 'border-amber-500/30 bg-amber-500/5' : 'border-border'}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className={`text-xs truncate flex-1 ${isOverridden ? 'font-medium' : 'text-muted-foreground'}`}>{a.name}</p>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {isOverridden && (
+                            <button className="text-[10px] text-amber-500 cursor-pointer underline"
+                              onClick={() => { const n = {...scores}; delete n[a.id]; setScores(n); }}>Reset</button>
+                          )}
+                          <span className="text-xs text-muted-foreground font-mono">{val} / {a.pointsPossible}</span>
+                        </div>
+                      </div>
+                      <Slider min={0} max={a.pointsPossible} step={0.5} value={[val]}
+                        onValueChange={([v]) => setScores(p => ({ ...p, [a.id]: Math.round(v * 2) / 2 }))}
+                        className="cursor-pointer" />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </CardContent>

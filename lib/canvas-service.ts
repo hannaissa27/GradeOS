@@ -189,7 +189,7 @@ export async function fetchAssignments(courseId: string, connection: CanvasConne
   }
 
   try {
-    const path = `/courses/${courseId}/assignments?per_page=100&include[]=submission&order_by=due_at`;
+    const path = `/courses/${courseId}/assignments?per_page=100&include[]=submission&include[]=assignment_group&order_by=due_at`;
     const assignments = await canvasFetch<any>(path, connection);
 
     // Guard against non-array response
@@ -197,6 +197,17 @@ export async function fetchAssignments(courseId: string, connection: CanvasConne
       console.warn('[GradeOS] assignments not array for course', courseId, assignments);
       return [];
     }
+
+    // Also fetch assignment groups to get weights
+    let groupWeights: Record<string, number> = {};
+    try {
+      const groups = await canvasFetch<any>(`/courses/${courseId}/assignment_groups?per_page=100`, connection);
+      if (Array.isArray(groups)) {
+        groups.forEach((g: any) => {
+          if (g.id != null) groupWeights[String(g.id)] = g.group_weight || 0;
+        });
+      }
+    } catch {}
 
     const semesterStart = new Date(getSemesterStart());
 
@@ -217,6 +228,8 @@ export async function fetchAssignments(courseId: string, connection: CanvasConne
         pointsPossible: a.points_possible || 0,
         submissionTypes: a.submission_types || [],
         published: a.published,
+        assignmentGroupId: a.assignment_group_id ? String(a.assignment_group_id) : null,
+        assignmentGroupWeight: a.assignment_group_id ? (groupWeights[String(a.assignment_group_id)] || 0) : 0,
         // Embedded submission data from include[]=submission
         submissionScore: a.submission?.score ?? null,
         submissionState: a.submission?.workflow_state || 'unsubmitted',

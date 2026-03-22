@@ -32,6 +32,8 @@ export interface Assignment {
   pointsPossible: number;
   submissionTypes: string[];
   published: boolean;
+  assignmentGroupId?: string | null;
+  assignmentGroupWeight?: number;
   // Embedded submission data
   submissionScore?: number | null;
   submissionState?: string;

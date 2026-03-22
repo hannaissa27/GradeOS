@@ -28,7 +28,7 @@ export function getSemesterStart(): string {
  * Compute current grade from only current-semester assignments and submissions
  */
 export function computeCurrentGrade(
-  assignments: { id: string; dueDate?: string | null; pointsPossible: number; submissionScore?: number | null }[],
+  assignments: { id: string; dueDate?: string | null; pointsPossible: number; submissionScore?: number | null; assignmentGroupId?: string | null; assignmentGroupWeight?: number }[],
   submissions: { assignmentId: string; score: number | null }[],
   semesterStart: Date
 ): number | null {
@@ -37,13 +37,46 @@ export function computeCurrentGrade(
     return new Date(a.dueDate) >= semesterStart;
   });
 
+  // Check if any assignments have group weights (weighted categories)
+  const hasWeights = semesterAssignments.some(a => (a.assignmentGroupWeight || 0) > 0);
+
+  if (hasWeights) {
+    // Weighted category calculation
+    const groups: Record<string, { earned: number; possible: number; weight: number }> = {};
+    
+    for (const assignment of semesterAssignments) {
+      if (!assignment.pointsPossible || assignment.pointsPossible === 0) continue;
+      const groupId = assignment.assignmentGroupId || 'default';
+      const weight = assignment.assignmentGroupWeight || 0;
+      if (!groups[groupId]) groups[groupId] = { earned: 0, possible: 0, weight };
+      
+      const submission = submissions.find(s => s.assignmentId === assignment.id);
+      const score = submission?.score ?? (assignment as any).submissionScore ?? null;
+      if (score !== null) {
+        groups[groupId].earned += score;
+        groups[groupId].possible += assignment.pointsPossible;
+      }
+    }
+
+    let weightedSum = 0;
+    let totalWeight = 0;
+    for (const group of Object.values(groups)) {
+      if (group.possible > 0 && group.weight > 0) {
+        weightedSum += (group.earned / group.possible) * group.weight;
+        totalWeight += group.weight;
+      }
+    }
+    if (totalWeight === 0) return null;
+    return Math.round((weightedSum / totalWeight) * 1000) / 10;
+  }
+
+  // Simple points-based calculation (no weights)
   let totalEarned = 0;
   let totalPossible = 0;
 
   for (const assignment of semesterAssignments) {
     if (!assignment.pointsPossible || assignment.pointsPossible === 0) continue;
     
-    // Check submissions array first, then fall back to embedded score
     const submission = submissions.find(s => s.assignmentId === assignment.id);
     const score = submission?.score ?? (assignment as any).submissionScore ?? null;
     
