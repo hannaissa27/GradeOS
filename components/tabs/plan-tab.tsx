@@ -113,8 +113,7 @@ export function PlanTab({
                     <div className="flex items-center gap-2 min-w-0">
                       <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: courseColor(course.id) }} />
                       <div className="min-w-0">
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">{course.code}</p>
-                        <p className="font-medium text-sm truncate leading-tight">{course.name}</p>
+                        <p className="font-medium text-sm truncate leading-tight">{course.name.includes(':') ? course.name.split(':').slice(1).join(':').trim().replace(/^(AP|IB|Honors|Accelerated) /i,'').trim() : course.name}</p>
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">

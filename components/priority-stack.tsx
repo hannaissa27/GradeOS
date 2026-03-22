@@ -181,25 +181,23 @@ export function PriorityStack({ assignments, submissions, courses = [], isLoadin
       </div>
 
       {/* View mode tabs */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
         <button
           onClick={() => setViewMode('queue')}
-          className={`text-xs px-2 py-1 rounded transition-colors ${viewMode === 'queue' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}`}
+          className={`cursor-pointer transition-colors ${viewMode === 'queue' ? 'text-foreground font-medium' : 'hover:text-foreground'}`}
         >
           All ({sortedAssignments.filter(a => !trashedIds.has(a.id)).length})
         </button>
         <button
           onClick={() => setViewMode('starred')}
-          className={`text-xs px-2 py-1 rounded transition-colors flex items-center gap-1 ${viewMode === 'starred' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}`}
+          className={`cursor-pointer transition-colors ${viewMode === 'starred' ? 'text-foreground font-medium' : 'hover:text-foreground'}`}
         >
-          <Star className="h-2.5 w-2.5" />
           Starred ({starredIds.size})
         </button>
         <button
           onClick={() => setViewMode('trash')}
-          className={`text-xs px-2 py-1 rounded transition-colors flex items-center gap-1 ${viewMode === 'trash' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}`}
+          className={`cursor-pointer transition-colors ${viewMode === 'trash' ? 'text-foreground font-medium' : 'hover:text-foreground'}`}
         >
-          <Trash2 className="h-2.5 w-2.5" />
           Removed ({trashedIds.size})
         </button>
       </div>

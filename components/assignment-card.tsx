@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Star, Trash2, ChevronDown, Check, X, Clock, AlertTriangle } from 'lucide-react';
+import { Star, Trash2, ChevronDown, Clock, AlertTriangle } from 'lucide-react';
 import {
   courseColor,
   formatDueDate,
@@ -55,15 +55,7 @@ export function AssignmentCard({
     }).catch(() => {});
   }, [assignment.id]);
 
-  const handleSaveEffort = async () => {
-    setIsSaving(true);
-    try {
-      await setEffortOverride(assignment.id, effortMinutes);
-      setSavedEffort(effortMinutes);
-      onEffortChange?.(assignment.id, effortMinutes);
-    } catch {}
-    finally { setIsSaving(false); }
-  };
+  // effort saves inline via onValueCommit on the slider
 
   const dueDateColorClass = getDueDateColor(assignment.dueDate);
   const isStarred = starredIds.has(assignment.id);
@@ -95,8 +87,11 @@ export function AssignmentCard({
     ? Math.round((whatIfGrade - currentCourseGrade) * 10) / 10
     : null;
 
-  // Display name: prefer full course name, fall back to code
-  const courseDisplay = assignment.courseName || assignment.courseCode;
+  // Display full course name, strip "CODE: " prefix if present
+  const rawName = assignment.courseName || assignment.courseCode;
+  const courseDisplay = rawName.includes(':')
+    ? rawName.split(':').slice(1).join(':').trim().replace(/^(AP|IB|Honors|Accelerated)\s+/i, '').trim()
+    : rawName;
 
   return (
     <Card className={`overflow-hidden ${isStarred ? 'ring-1 ring-yellow-400/50' : ''}`}>
@@ -160,32 +155,31 @@ export function AssignmentCard({
         {/* Expanded panel */}
         {isExpanded && (
           <div className="mt-2.5 pt-2.5 border-t border-border space-y-3">
-            {/* Effort */}
+            {/* Effort — auto-saves on slider release */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <Clock className="h-3 w-3" />Estimated effort
                 </p>
-                <span className="text-xs font-medium">{minutesToLabel(effortMinutes)}</span>
+                <span className="text-xs font-medium">
+                  {minutesToLabel(effortMinutes)}
+                  {isSaving && <span className="ml-1 text-muted-foreground opacity-60">saving...</span>}
+                </span>
               </div>
               <Slider
                 value={[effortMinutes]}
                 onValueChange={([v]) => setEffortMinutes(v)}
+                onValueCommit={([v]) => {
+                  setEffortMinutes(v);
+                  setIsSaving(true);
+                  setEffortOverride(assignment.id, v)
+                    .then(() => { setSavedEffort(v); onEffortChange?.(assignment.id, v); })
+                    .catch(() => {})
+                    .finally(() => setIsSaving(false));
+                }}
                 min={15} max={480} step={15}
                 className="w-full cursor-pointer"
               />
-              {effortMinutes !== (savedEffort ?? 60) && (
-                <div className="flex gap-2 justify-end">
-                  <button onClick={() => setEffortMinutes(savedEffort ?? 60)} disabled={isSaving}
-                    className="text-xs text-muted-foreground hover:text-foreground cursor-pointer px-2 py-1 rounded hover:bg-accent transition-colors">
-                    Cancel
-                  </button>
-                  <button onClick={handleSaveEffort} disabled={isSaving}
-                    className="text-xs font-medium cursor-pointer px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
-                    Save
-                  </button>
-                </div>
-              )}
             </div>
 
             {/* What-if */}
@@ -196,16 +190,7 @@ export function AssignmentCard({
                   <span className="text-xs font-mono text-muted-foreground">
                     {whatIfScore !== null ? whatIfScore : '--'} / {assignment.pointsPossible} pts
                   </span>
-                  {whatIfGrade !== null && (
-                    <span className={`text-xs font-bold ${getGradeColor(whatIfGrade)}`}>
-                      → {whatIfGrade}%
-                      {gradeDelta !== null && (
-                        <span className={`ml-1 ${gradeDelta >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                          ({gradeDelta >= 0 ? '+' : ''}{gradeDelta}%)
-                        </span>
-                      )}
-                    </span>
-                  )}
+
                 </div>
               </div>
               <Slider
@@ -214,10 +199,23 @@ export function AssignmentCard({
                 min={0} max={assignment.pointsPossible} step={1}
                 className="w-full cursor-pointer"
               />
-              {whatIfScore !== null && (
-                <button className="text-xs text-muted-foreground hover:text-foreground cursor-pointer" onClick={() => setWhatIfScore(null)}>
-                  Clear
-                </button>
+              {whatIfGrade !== null && (
+                <div className="flex items-center justify-between pt-1">
+                  <div className="text-xs text-muted-foreground">
+                    Course grade would be
+                    <span className={`ml-1.5 font-bold text-sm ${getGradeColor(whatIfGrade)}`}>
+                      {whatIfGrade}%
+                    </span>
+                    {gradeDelta !== null && (
+                      <span className={`ml-1 ${gradeDelta >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        ({gradeDelta >= 0 ? '+' : ''}{gradeDelta}%)
+                      </span>
+                    )}
+                  </div>
+                  <button className="text-xs text-muted-foreground hover:text-foreground cursor-pointer" onClick={() => setWhatIfScore(null)}>
+                    Clear
+                  </button>
+                </div>
               )}
             </div>
           </div>
