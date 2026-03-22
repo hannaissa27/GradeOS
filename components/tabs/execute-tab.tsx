@@ -87,17 +87,18 @@ export function ExecuteTab({
       <div>
         <p className="text-xs text-muted-foreground mb-2 font-medium uppercase tracking-wide">Your grades right now — click any course for details</p>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-        {isLoading
-          ? [...Array(4)].map((_, i) => <LiveGradeCardSkeleton key={i} />)
-          : courses.map((course) => (
-              <LiveGradeCard
-                key={course.id}
-                course={course}
-                assignments={getAssignmentsForCourse(course.id)}
-                submissions={getSubmissionsForCourse(course.id)}
-                onClick={() => onSelectCourse?.(course.id)}
-              />
-            ))}
+          {isLoading
+            ? [...Array(4)].map((_, i) => <LiveGradeCardSkeleton key={i} />)
+            : courses.map((course) => (
+                <LiveGradeCard
+                  key={course.id}
+                  course={course}
+                  assignments={getAssignmentsForCourse(course.id)}
+                  submissions={getSubmissionsForCourse(course.id)}
+                  onClick={() => onSelectCourse?.(course.id)}
+                />
+              ))}
+        </div>
       </div>
 
       {/* Grade Autopsy — auto-detected bombed assignments */}
