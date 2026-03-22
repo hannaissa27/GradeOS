@@ -56,31 +56,29 @@ function DashboardContent() {
     try {
       const coursesData = await fetchCourses(connection);
 
-      // Fetch assignments + submissions for all courses fully in parallel
-      const courseResults = await Promise.all(
+      const assignmentsResults = await Promise.all(
         coursesData.map(async (course) => {
           try {
-            const [assignments, submissions] = await Promise.all([
-              fetchAssignments(course.id, connection),
-              fetchSubmissions(course.id, connection),
-            ]);
-            return {
-              assignments: assignments.map((a) => ({
-                ...a,
-                courseName: course.name,
-                courseCode: course.code,
-              })),
-              submissions,
-            };
+            const assignments = await fetchAssignments(course.id, connection);
+            console.log(`[GradeOS] ${course.code}: ${assignments.length} assignments`);
+            return assignments.map((a) => ({
+              ...a,
+              courseName: course.name,
+              courseCode: course.code,
+            }));
           } catch (err) {
-            console.error(`[GradeOS] FAILED for ${course.code}:`, err);
-            return { assignments: [], submissions: [] };
+            console.error(`[GradeOS] FAILED to fetch assignments for ${course.code}:`, err);
+            return [];
           }
         })
       );
 
-      const allAssignmentsFlat = courseResults.flatMap(r => r.assignments);
-      const allSubmissionsFlat = courseResults.flatMap(r => r.submissions);
+      const submissionsResults = await Promise.all(
+        coursesData.map((course) => fetchSubmissions(course.id, connection))
+      );
+
+      const allAssignmentsFlat = assignmentsResults.flat();
+      const allSubmissionsFlat = submissionsResults.flat();
 
       setAllAssignments(allAssignmentsFlat);
       setAllSubmissions(allSubmissionsFlat);
@@ -106,10 +104,11 @@ function DashboardContent() {
         setAnnouncements(announcementsData);
       }
     } catch (err) {
-      console.error('[GradeOS] loadData failed:', err);
-      // Only show error screen if we have never loaded data successfully
+      // Only surface the error if we have no data yet — avoids the flash on first load
       if (!hasLoadedOnce) {
         setError(err instanceof Error ? err.message : 'Failed to load data');
+      } else {
+        console.error('[GradeOS] Background refresh failed:', err);
       }
     } finally {
       setIsLoading(false);
@@ -166,10 +165,10 @@ function DashboardContent() {
       <main className="max-w-7xl mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-4 mb-6">
-            <TabsTrigger value="execute">Execute</TabsTrigger>
-            <TabsTrigger value="courses">Courses</TabsTrigger>
-            <TabsTrigger value="schedule">Schedule</TabsTrigger>
-            <TabsTrigger value="reflect">Reflect</TabsTrigger>
+            <TabsTrigger value="execute">Dashboard</TabsTrigger>
+            <TabsTrigger value="courses">My Courses</TabsTrigger>
+            <TabsTrigger value="schedule">My Week</TabsTrigger>
+            <TabsTrigger value="reflect">Analytics</TabsTrigger>
           </TabsList>
 
           <TabsContent value="execute" className="mt-0">

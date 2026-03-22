@@ -181,6 +181,11 @@ export default function TodosPage() {
       setTodos(data);
     } catch (error) {
       console.error('Failed to load todos:', error);
+      // Supabase table may not exist - use localStorage fallback
+      try {
+        const local = JSON.parse(localStorage.getItem('gradeos-todos-local') || '[]');
+        setTodos(local);
+      } catch {}
     } finally {
       setIsLoading(false);
     }
@@ -247,22 +252,45 @@ export default function TodosPage() {
   const handleAddTodo = async () => {
     if (!newTitle.trim()) return;
 
-    const todo = await createTodo({
+    const localTodo: Todo = {
+      id: `local-${Date.now()}`,
       title: newTitle,
-      dueDate: newDate?.toISOString().split('T')[0],
+      notes: '',
+      dueDate: newDate?.toISOString().split('T')[0] || null,
       priority: newPriority,
-      courseTag: newCourseTag || undefined,
+      completed: false,
+      courseTag: newCourseTag || '',
       durationMinutes: newDuration,
-    });
+      sortOrder: todos.length,
+      createdAt: new Date().toISOString(),
+    };
 
-    if (todo) {
-      setTodos(prev => [todo, ...prev]);
-      setNewTitle('');
-      setNewDate(undefined);
-      setNewPriority('medium');
-      setNewCourseTag('');
-      setNewDuration(60);
-      setShowAddForm(false);
+    // Add optimistically right away
+    setTodos(prev => [localTodo, ...prev]);
+    setNewTitle('');
+    setNewDate(undefined);
+    setNewPriority('medium');
+    setNewCourseTag('');
+    setNewDuration(60);
+    setShowAddForm(false);
+
+    // Try Supabase in background
+    try {
+      const todo = await createTodo({
+        title: localTodo.title,
+        dueDate: localTodo.dueDate || undefined,
+        priority: localTodo.priority,
+        courseTag: localTodo.courseTag || undefined,
+        durationMinutes: localTodo.durationMinutes,
+      });
+      if (todo) {
+        // Replace local todo with saved one
+        setTodos(prev => prev.map(t => t.id === localTodo.id ? todo : t));
+      }
+    } catch {
+      // Keep local todo — save to localStorage
+      const existing = JSON.parse(localStorage.getItem('gradeos-todos-local') || '[]');
+      localStorage.setItem('gradeos-todos-local', JSON.stringify([localTodo, ...existing]));
     }
   };
 
@@ -324,10 +352,13 @@ export default function TodosPage() {
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Link href="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors">
+              <Link href="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors" title="Back to dashboard">
                 <ArrowLeft className="w-5 h-5" />
               </Link>
-              <h1 className="text-xl font-bold">Todos</h1>
+              <div>
+                <h1 className="text-xl font-bold">My Todos</h1>
+                <p className="text-xs text-muted-foreground">Personal to-do list, separate from Canvas</p>
+              </div>
             </div>
             <Button onClick={() => setShowAddForm(true)}>
               <Plus className="w-4 h-4 mr-2" />
