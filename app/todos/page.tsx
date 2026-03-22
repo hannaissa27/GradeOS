@@ -199,8 +199,6 @@ export default function TodosPage() {
   const filteredTodos = useMemo(() => {
     const now = new Date();
     const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-
-    const now = new Date();
     const tomorrowStart = new Date(now); tomorrowStart.setDate(now.getDate()+1); tomorrowStart.setHours(0,0,0,0);
     const tomorrowEnd = new Date(now); tomorrowEnd.setDate(now.getDate()+1); tomorrowEnd.setHours(23,59,59,999);
     const weekEnd = new Date(now); weekEnd.setDate(now.getDate()+7); weekEnd.setHours(23,59,59,999);
