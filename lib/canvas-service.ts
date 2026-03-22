@@ -153,11 +153,13 @@ export async function fetchCourses(connection: CanvasConnection): Promise<Course
         enrollmentState: course.enrollment_state || 'active',
         currentGrade: null, // Will be computed from actual submissions, not Canvas's cumulative score
         finalGrade: course.enrollments?.[0]?.computed_final_score ?? null,
-        teachers: (course.teachers || []).map((t: any) => ({
-          id: (t.id || '').toString(),
-          name: t.display_name || t.name || 'Professor',
-          email: t.email || '',
-        })),
+        teachers: (course.teachers || [])
+          .filter((t: any) => t != null)
+          .map((t: any) => ({
+            id: (t.id != null ? t.id : '').toString(),
+            name: t.display_name || t.name || 'Professor',
+            email: t.email || '',
+          })),
       }));
   } catch (error) {
     throw error;

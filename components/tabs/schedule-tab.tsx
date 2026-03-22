@@ -108,16 +108,27 @@ export function ScheduleTab({
     startTime.setHours(hour, 0, 0, 0);
     const effortMinutes = effortOverrides.get(draggedAssignment.id) ?? 60;
     const endTime = new Date(startTime.getTime() + effortMinutes * 60 * 1000);
-    try {
-      const newBlock = await createTimeBlock(draggedAssignment.id, draggedAssignment.courseId, startTime, endTime);
-      setTimeBlocks(prev => [...prev, newBlock]);
-      setDropError(null);
-    } catch (e: any) {
-      console.error('[GradeOS] createTimeBlock failed:', e);
-      setDropError('Could not save time block. Check Supabase connection.');
-      setTimeout(() => setDropError(null), 4000);
-    }
+
+    // Add block to UI immediately (optimistic)
+    const localBlock: TimeBlock = {
+      id: `local-${Date.now()}`,
+      assignmentId: draggedAssignment.id,
+      courseId: draggedAssignment.courseId,
+      startTime: startTime.toISOString(),
+      endTime: endTime.toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+    setTimeBlocks(prev => [...prev, localBlock]);
+    setDropError(null);
     setDraggedAssignment(null);
+
+    // Try to persist in background — silent failure
+    try {
+      const saved = await createTimeBlock(draggedAssignment.id, draggedAssignment.courseId, startTime, endTime);
+      setTimeBlocks(prev => prev.map(b => b.id === localBlock.id ? saved : b));
+    } catch {
+      // Keep local block for this session — no error shown
+    }
   };
 
   const handleDeleteBlock = async (blockId: string) => {
@@ -251,9 +262,7 @@ export function ScheduleTab({
           </button>
         </div>
 
-        {dropError && (
-          <p className="text-xs text-red-500 mb-2">{dropError}</p>
-        )}
+
 
         <div className="grid grid-cols-8 border-l border-t border-border">
           <div className="border-r border-b border-border bg-muted/30 h-10" />

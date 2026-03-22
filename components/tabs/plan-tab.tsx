@@ -173,7 +173,7 @@ export function PlanTab({
         </button>
         <div
           className="w-3 h-3 rounded-full flex-shrink-0"
-          style={{ backgroundColor: courseColor(selectedCourseId) }}
+          style={{ backgroundColor: courseColor(selectedCourseId || '') }}
         />
         <div className="flex-1 min-w-0">
           <p className="text-xs text-muted-foreground">
@@ -422,7 +422,7 @@ function WhatIfCalculator({
 
   const hasAny = Object.keys(hypotheticalScores).length > 0;
 
-  if (eligibleAssignments.length === 0) return null;
+  if (!eligibleAssignments || eligibleAssignments.length === 0) return null;
 
   return (
     <Card>
