@@ -179,7 +179,7 @@ function ProjectedFinalsCard({ data }: { data: AnalyticsData }) {
         <div className="mt-2 space-y-1">
           {projections.slice(0, 4).map(p => (
             <div key={p.course.id} className="flex items-center justify-between text-xs">
-              <span className="truncate">{p.course.code}</span>
+              <span className="truncate">{p.course.name.split(':')[0].replace(/AP |IB /gi,'').trim().slice(0,15)}</span>
               <span className={getGradeColor(p.projected ?? p.current)}>
                 {p.current !== null ? `${p.current}%` : '--'} 
                 {p.projected && p.projected !== p.current && (
@@ -330,7 +330,8 @@ function WorkloadForecastCard({ data }: { data: AnalyticsData }) {
         !sub?.submittedAt;
     })
     .forEach(a => {
-      const dayKey = new Date(a.dueDate!).toLocaleDateString('en-US', { weekday: 'short' });
+      const dueDate = new Date(a.dueDate!);
+      const dayKey = dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       const estimatedHours = a.pointsPossible > 50 ? 3 : a.pointsPossible > 20 ? 2 : 1;
       upcomingByDay[dayKey] = (upcomingByDay[dayKey] || 0) + estimatedHours;
     });
@@ -445,7 +446,7 @@ function MomentumCard({ data }: { data: AnalyticsData }) {
         <div className="mt-2 space-y-1">
           {trends.slice(0, 4).map(t => (
             <div key={t.course.id} className="flex items-center justify-between text-xs">
-              <span>{t.course.code}</span>
+              <span className="truncate max-w-[80px]">{t.course.name.split(':')[0].replace(/AP |IB /gi,'').trim()}</span>
               <span className="flex items-center gap-1">
                 {t.trend === 'up' && <TrendingUp className="h-3 w-3 text-[oklch(var(--grade-safe))]" />}
                 {t.trend === 'down' && <TrendingDown className="h-3 w-3 text-[oklch(var(--grade-danger))]" />}
@@ -486,7 +487,7 @@ function SemesterSnapshotCard({ data }: { data: AnalyticsData }) {
                   className="w-3 h-3 rounded-full"
                   style={{ backgroundColor: courseColor(course.id) }}
                 />
-                <span className="text-sm font-medium">{course.code}</span>
+                <span className="text-sm font-medium truncate max-w-[120px]">{course.name.replace(/^(AP|IB|Honors) /i, '').split(':')[0].trim()}</span>
                 <span className={`text-lg font-bold ${getGradeColor(course.currentGrade)}`} data-grade>
                   {course.currentGrade !== null ? `${course.currentGrade}%` : '--'}
                 </span>
@@ -689,33 +690,44 @@ function PointsLostCard({ data }: { data: AnalyticsData }) {
 }
 
 function GradeTrajectoryCard({ data }: { data: AnalyticsData }) {
-  // Build weekly grade data per course
+  // Use short course name (first word or acronym) as key to avoid number codes
+  const getShortName = (course: Course) => {
+    // e.g. "AP Calculus AB" -> "Calc AB", "Arabic Lingual..." -> "Arabic"
+    const words = course.name.replace(/^(AP|IB|Honors)\s+/i, '').split(' ');
+    return words.slice(0, 2).join(' ');
+  };
+
   const courseLines = data.courses.map(course => {
-    const submissions = data.submissions
+    const courseSubmissions = data.submissions
       .filter(s => s.courseId === course.id && s.submittedAt && s.score !== null)
       .sort((a, b) => new Date(a.submittedAt!).getTime() - new Date(b.submittedAt!).getTime());
 
-    if (submissions.length < 2) return null;
+    if (courseSubmissions.length < 2) return null;
 
     let cumEarned = 0;
     let cumPossible = 0;
-    
-    const points = submissions.map(s => {
+
+    const points = courseSubmissions.map(s => {
       const assignment = data.assignments.find(a => a.id === s.assignmentId);
+      const pts = assignment?.pointsPossible || 0;
+      if (pts === 0) return null; // skip zero-point assignments — they skew to 100%
       cumEarned += s.score!;
-      cumPossible += assignment?.pointsPossible || 0;
+      cumPossible += pts;
       return {
         date: new Date(s.submittedAt!).getTime(),
-        grade: cumPossible > 0 ? Math.round((cumEarned / cumPossible) * 100) : 0,
+        grade: cumPossible > 0 ? Math.round((cumEarned / cumPossible) * 100) : null,
       };
-    });
+    }).filter((p): p is { date: number; grade: number } => p !== null && p.grade !== null);
+
+    if (points.length < 2) return null;
 
     return {
       course,
+      shortName: getShortName(course),
       points,
       color: courseColor(course.id),
     };
-  }).filter(Boolean) as { course: Course; points: { date: number; grade: number }[]; color: string }[];
+  }).filter(Boolean) as { course: Course; shortName: string; points: { date: number; grade: number }[]; color: string }[];
 
   if (courseLines.length === 0) {
     return (
@@ -725,44 +737,63 @@ function GradeTrajectoryCard({ data }: { data: AnalyticsData }) {
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground text-sm">
-            Need more submissions to show trajectory
+            Not enough graded submissions yet to show trajectory
           </p>
         </CardContent>
       </Card>
     );
   }
 
-  // Normalize to same x-axis points
+  // Build chart data with real dates on x-axis
   const allDates = [...new Set(courseLines.flatMap(c => c.points.map(p => p.date)))].sort();
-  const chartData = allDates.map((date, i) => {
-    const point: Record<string, number | string> = { x: i + 1 };
+  const chartData = allDates.map(date => {
+    const point: Record<string, number | string> = {
+      date,
+      label: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    };
     courseLines.forEach(line => {
-      const match = line.points.find(p => p.date <= date);
-      if (match) {
-        point[line.course.code] = match.grade;
-      }
+      // Find the most recent grade up to this date
+      const match = [...line.points].reverse().find(p => p.date <= date);
+      if (match) point[line.shortName] = match.grade;
     });
     return point;
   });
+
+  // Find grade range for y-axis
+  const allGrades = courseLines.flatMap(l => l.points.map(p => p.grade));
+  const minGrade = Math.max(0, Math.floor(Math.min(...allGrades) / 10) * 10 - 5);
+  const maxGrade = 100;
 
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium">Grade Trajectory</CardTitle>
+        <p className="text-xs text-muted-foreground">Running grade per course over the semester</p>
       </CardHeader>
       <CardContent>
-        <div className="h-64">
+        <div className="h-56">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
-              <XAxis dataKey="x" tick={{ fontSize: 10 }} />
-              <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} tickFormatter={v => `${v}%`} />
+            <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+              <XAxis
+                dataKey="label"
+                tick={{ fontSize: 9, fill: '#888' }}
+                interval="preserveStartEnd"
+                tickCount={6}
+              />
+              <YAxis
+                domain={[minGrade, maxGrade]}
+                tick={{ fontSize: 10, fill: '#888' }}
+                tickFormatter={v => `${v}%`}
+                width={35}
+              />
               <Tooltip
-                content={({ active, payload }) => {
+                content={({ active, payload, label }) => {
                   if (active && payload && payload.length) {
                     return (
-                      <div className="bg-popover border border-border rounded-lg p-2 shadow-lg text-xs">
+                      <div className="bg-popover border border-border rounded-lg p-2 shadow-lg text-xs space-y-1">
+                        <p className="font-medium text-muted-foreground">{label}</p>
                         {payload.map((p, i) => (
-                          <p key={i} style={{ color: p.color }}>
+                          <p key={i} style={{ color: p.color as string }}>
                             {p.name}: {p.value}%
                           </p>
                         ))}
@@ -776,10 +807,10 @@ function GradeTrajectoryCard({ data }: { data: AnalyticsData }) {
                 <Line
                   key={line.course.id}
                   type="monotone"
-                  dataKey={line.course.code}
+                  dataKey={line.shortName}
                   stroke={line.color}
                   strokeWidth={2}
-                  dot={{ r: 3 }}
+                  dot={{ r: 2, strokeWidth: 0, fill: line.color }}
                   connectNulls
                 />
               ))}
@@ -788,9 +819,9 @@ function GradeTrajectoryCard({ data }: { data: AnalyticsData }) {
         </div>
         <div className="flex flex-wrap gap-3 mt-2">
           {courseLines.map(line => (
-            <div key={line.course.id} className="flex items-center gap-1 text-xs">
+            <div key={line.course.id} className="flex items-center gap-1.5 text-xs">
               <div className="w-3 h-1 rounded" style={{ backgroundColor: line.color }} />
-              <span>{line.course.code}</span>
+              <span>{line.shortName}</span>
             </div>
           ))}
         </div>

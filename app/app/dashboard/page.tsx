@@ -106,18 +106,13 @@ function DashboardContent() {
         setAnnouncements(announcementsData);
       }
     } catch (err) {
-      // Never show the error screen on first load — it causes the flash
-      // Only show after a manual retry when user knows data should be there
-      if (hasLoadedOnce) {
-        console.error('[GradeOS] Background refresh failed:', err);
-      } else {
-        // First load failed — retry once silently after 1 second
-        setTimeout(() => {
-          setIsLoading(false);
-        }, 1000);
+      console.error('[GradeOS] loadData failed:', err);
+      // Only show error screen if we have never loaded data successfully
+      if (!hasLoadedOnce) {
+        setError(err instanceof Error ? err.message : 'Failed to load data');
       }
     } finally {
-      if (hasLoadedOnce) setIsLoading(false);
+      setIsLoading(false);
     }
   }, [connection, hasLoadedOnce]);
 

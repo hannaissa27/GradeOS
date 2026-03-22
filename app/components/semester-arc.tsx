@@ -176,9 +176,9 @@ export function SemesterArc({ assignments, submissions, isLoading }: SemesterArc
                   return null;
                 }}
               />
-              <ReferenceLine y={90} stroke="#22c55e" strokeDasharray="3 3" strokeOpacity={0.5} label={{ value: 'A', position: 'right', fontSize: 9, fill: '#22c55e' }} />
-              <ReferenceLine y={80} stroke="#f59e0b" strokeDasharray="3 3" strokeOpacity={0.5} label={{ value: 'B', position: 'right', fontSize: 9, fill: '#f59e0b' }} />
-              <ReferenceLine y={70} stroke="#ef4444" strokeDasharray="3 3" strokeOpacity={0.5} label={{ value: 'C', position: 'right', fontSize: 9, fill: '#ef4444' }} />
+              <ReferenceLine y={90} stroke="#22c55e" strokeDasharray="3 3" strokeOpacity={0.5} />
+              <ReferenceLine y={80} stroke="#f59e0b" strokeDasharray="3 3" strokeOpacity={0.5} />
+              <ReferenceLine y={70} stroke="#ef4444" strokeDasharray="3 3" strokeOpacity={0.5} />
               <Line
                 type="monotone"
                 dataKey="actual"
@@ -211,7 +211,7 @@ export function SemesterArc({ assignments, submissions, isLoading }: SemesterArc
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-5 h-0 border-t-2 border-dashed" style={{ borderColor: '#888' }} />
-            <span>Where you'll finish</span>
+            <span>Where you will finish</span>
           </div>
         </div>
       </CardContent>
