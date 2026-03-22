@@ -14,7 +14,7 @@ interface SemesterArcProps {
 }
 
 export function SemesterArc({ assignments, submissions, isLoading }: SemesterArcProps) {
-  const chartData = useMemo(() => {
+  const chartData = useMemo(() => { try {
     const semesterStart = new Date(getSemesterStart());
 
     const gradedSubmissions = submissions
@@ -81,6 +81,7 @@ export function SemesterArc({ assignments, submissions, isLoading }: SemesterArc
     }
 
     return dataPoints;
+  } catch { return null; }
   }, [assignments, submissions]);
 
   if (isLoading) {

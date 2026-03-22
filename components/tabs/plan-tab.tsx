@@ -159,7 +159,15 @@ export function PlanTab({
     );
   }
 
-  // Course detail view
+  // Course detail view - safety first
+  if (!selectedCourse) {
+    return (
+      <div className="text-center py-8 text-muted-foreground text-sm">
+        Course not found. <button onClick={onBack} className="underline cursor-pointer">Go back</button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
 
@@ -345,13 +353,15 @@ function AssignmentList({ assignments, submissions, expandedAssignment, onExpand
                   </Badge>
                 )}
                 {submission?.missing && <Badge variant="destructive">Missing</Badge>}
-                {/* First Move button — only on unsubmitted */}
-                {!submission?.submittedAt && (submission?.score === null || submission?.score === undefined) && (
-                  <FirstMoveButton assignment={assignment} />
-                )}
               </div>
             </AccordionTrigger>
             <AccordionContent>
+              {/* First Move button inside content — NOT in trigger (nested buttons crash) */}
+              {!submission?.submittedAt && (submission?.score === null || submission?.score === undefined) && (
+                <div className="pb-3">
+                  <FirstMoveButton assignment={assignment} />
+                </div>
+              )}
               <AssignmentDetail assignment={assignment} submission={submission} />
             </AccordionContent>
           </AccordionItem>
