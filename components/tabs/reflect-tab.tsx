@@ -79,7 +79,6 @@ export function ReflectTab({ courses, assignments, submissions, isLoading }: Ref
           <GradeRiskCard data={data} />
           <GradeChangeCard data={data} />
           <EarlyBirdCard data={data} />
-          <GradeLeakCard data={data} />
           <WorkloadForecastCard data={data} />
           <MomentumCard data={data} />
         </div>
@@ -112,120 +111,117 @@ export function ReflectTab({ courses, assignments, submissions, isLoading }: Ref
 // ============ Weekly Wrap Cards ============
 
 function GradeRiskCard({ data }: { data: AnalyticsData }) {
-  const nextWeek = new Date();
-  nextWeek.setDate(nextWeek.getDate() + 7);
-  
-  // Find assignments due this week with most points
-  const upcomingAssignments = data.assignments
-    .filter(a => a.dueDate && new Date(a.dueDate) <= nextWeek && new Date(a.dueDate) > new Date())
-    .sort((a, b) => b.pointsPossible - a.pointsPossible);
+  const now = new Date();
+  const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const submissionMap = new Map(data.submissions.map(s => [s.assignmentId, s]));
 
-  const totalPointsAtRisk = upcomingAssignments.reduce((sum, a) => sum + a.pointsPossible, 0);
-  const topRiskCourse = upcomingAssignments[0]?.courseCode;
+  const upcoming = data.assignments
+    .filter(a => {
+      if (!a.dueDate || !a.pointsPossible) return false;
+      const due = new Date(a.dueDate);
+      if (due < now || due > nextWeek) return false;
+      const sub = submissionMap.get(a.id);
+      return !sub?.submittedAt && (sub?.score === null || sub?.score === undefined);
+    })
+    .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime());
 
-  if (upcomingAssignments.length === 0) {
-    return (
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4" />
-            Grade Risk This Week
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-2xl font-bold text-[oklch(var(--grade-safe))]">Clear week ahead</p>
-          <p className="text-xs text-muted-foreground mt-1">No major assignments due</p>
-        </CardContent>
-      </Card>
-    );
-  }
+  const totalPts = upcoming.reduce((s, a) => s + a.pointsPossible, 0);
 
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4" />
-          Grade Risk This Week
+          <AlertTriangle className="h-4 w-4" />Due this week
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <p className="text-2xl font-bold">{totalPointsAtRisk} pts</p>
-        <p className="text-xs text-muted-foreground">at stake in {topRiskCourse}</p>
-        <div className="mt-2 space-y-1">
-          {upcomingAssignments.slice(0, 3).map(a => (
-            <p key={a.id} className="text-xs truncate">
-              {a.name} ({a.pointsPossible} pts)
-            </p>
-          ))}
-        </div>
+        {upcoming.length === 0 ? (
+          <>
+            <p className="text-2xl font-bold text-[oklch(var(--grade-safe))]">Nothing due</p>
+            <p className="text-xs text-muted-foreground mt-1">Clear week ahead</p>
+          </>
+        ) : (
+          <>
+            <p className="text-2xl font-bold">{upcoming.length} assignment{upcoming.length !== 1 ? 's' : ''}</p>
+            <p className="text-xs text-muted-foreground">{totalPts} total points at stake</p>
+            <div className="mt-3 space-y-1.5">
+              {upcoming.slice(0, 4).map(a => {
+                const courseName = data.courses.find(c => c.id === a.courseId)?.name || '';
+                const shortName = courseName.includes(':') ? courseName.split(':').slice(1).join(':').trim() : courseName;
+                const daysLeft = Math.ceil((new Date(a.dueDate!).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                return (
+                  <div key={a.id} className="flex items-center justify-between text-xs">
+                    <span className="truncate flex-1 mr-2">{a.name}</span>
+                    <div className="flex items-center gap-2 flex-shrink-0 text-muted-foreground">
+                      <span>{a.pointsPossible}pts</span>
+                      <span className={daysLeft <= 1 ? 'text-red-500 font-medium' : daysLeft <= 3 ? 'text-amber-500' : ''}>
+                        {daysLeft === 0 ? 'today' : daysLeft === 1 ? 'tomorrow' : `in ${daysLeft}d`}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );
 }
 
 function GradeChangeCard({ data }: { data: AnalyticsData }) {
-  // Compare first half vs second half of graded submissions per course
-  const changes = data.courses.map(course => {
-    const subs = data.submissions
-      .filter(s => s.courseId === course.id && s.score !== null && s.submittedAt)
-      .sort((a, b) => new Date(a.submittedAt!).getTime() - new Date(b.submittedAt!).getTime());
-
-    if (subs.length < 4) return null;
-
-    const mid = Math.floor(subs.length / 2);
-    const earlier = subs.slice(0, mid);
-    const recent = subs.slice(mid);
-
-    const avgScore = (list: typeof subs) => {
-      let e = 0, p = 0;
-      list.forEach(s => {
-        const a = data.assignments.find(a => a.id === s.assignmentId);
-        if (a?.pointsPossible) { e += s.score!; p += a.pointsPossible; }
-      });
-      return p > 0 ? Math.round((e / p) * 100) : null;
-    };
-
-    const earlyAvg = avgScore(earlier);
-    const recentAvg = avgScore(recent);
-    if (!earlyAvg || !recentAvg) return null;
-
-    return {
-      course,
-      earlyAvg,
-      recentAvg,
-      delta: recentAvg - earlyAvg,
-    };
-  }).filter(Boolean) as { course: Course; earlyAvg: number; recentAvg: number; delta: number }[];
+  const changes = data.courses
+    .filter(c => !/advisory|homeroom/i.test(c.name))
+    .map(course => {
+      const subs = data.submissions
+        .filter(s => s.courseId === course.id && s.score !== null && (s.submittedAt || s.gradedAt))
+        .sort((a, b) => new Date(a.submittedAt || a.gradedAt!).getTime() - new Date(b.submittedAt || b.gradedAt!).getTime());
+      if (subs.length < 4) return null;
+      const mid = Math.floor(subs.length / 2);
+      const avg = (list: typeof subs) => {
+        let e = 0, p = 0;
+        list.forEach(s => {
+          const a = data.assignments.find(a => a.id === s.assignmentId);
+          if (a?.pointsPossible) { e += s.score!; p += a.pointsPossible; }
+        });
+        return p > 0 ? Math.round((e / p) * 100) : null;
+      };
+      const early = avg(subs.slice(0, mid));
+      const recent = avg(subs.slice(mid));
+      if (early === null || recent === null) return null;
+      const shortName = course.name.includes(':') ? course.name.split(':').slice(1).join(':').trim().replace(/^(AP|IB|Honors) /i, '') : course.name;
+      return { course, shortName: shortName.split(' ').slice(0, 2).join(' '), early, recent, delta: recent - early };
+    }).filter(Boolean) as { course: Course; shortName: string; early: number; recent: number; delta: number }[];
 
   if (changes.length === 0) {
     return (
-      <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex items-center gap-2"><TrendingUp className="h-4 w-4" />Grade Trend</CardTitle></CardHeader>
+      <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex items-center gap-2"><TrendingUp className="h-4 w-4" />Grade trend</CardTitle></CardHeader>
         <CardContent><p className="text-sm text-muted-foreground">Not enough data yet</p></CardContent>
       </Card>
     );
   }
 
-  const improving = changes.filter(c => c.delta > 0).length;
-  const best = changes.sort((a, b) => b.delta - a.delta)[0];
-
+  const improving = changes.filter(c => c.delta > 1).length;
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <TrendingUp className="h-4 w-4" />Grade Trend
+          <TrendingUp className="h-4 w-4" />Grade trend
         </CardTitle>
       </CardHeader>
       <CardContent>
         <p className="text-2xl font-bold">{improving} of {changes.length}</p>
-        <p className="text-xs text-muted-foreground">courses trending up recently</p>
+        <p className="text-xs text-muted-foreground">courses improving recently</p>
         <div className="mt-3 space-y-1.5">
-          {changes.slice(0, 4).map(c => (
+          {changes.map(c => (
             <div key={c.course.id} className="flex items-center justify-between text-xs">
-              <span className="truncate text-muted-foreground">{shortCourseName(c.course)}</span>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <span>{c.earlyAvg}% → {c.recentAvg}%</span>
-                <span className={c.delta >= 0 ? 'text-green-500' : 'text-red-500'}>
-                  ({c.delta >= 0 ? '+' : ''}{c.delta}%)
+              <span className="text-muted-foreground truncate flex-1 mr-2">{c.shortName}</span>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <span>{c.early}%</span>
+                <span className="text-muted-foreground">→</span>
+                <span>{c.recent}%</span>
+                <span className={`font-bold ${c.delta > 1 ? 'text-green-500' : c.delta < -1 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                  ({c.delta > 0 ? '+' : ''}{c.delta}%)
                 </span>
               </div>
             </div>
@@ -236,239 +232,103 @@ function GradeChangeCard({ data }: { data: AnalyticsData }) {
   );
 }
 
-function ProjectedFinalsCard({ data }: { data: AnalyticsData }) {
-  const projections = data.courses.map(course => {
-    const courseSubmissions = data.submissions.filter(s => s.courseId === course.id);
-    const courseAssignments = data.assignments.filter(a => a.courseId === course.id);
-    
-    const points = courseSubmissions
-      .filter(s => s.score !== null)
-      .map(s => {
-        const assignment = courseAssignments.find(a => a.id === s.assignmentId);
-        return {
-          earned: s.score!,
-          possible: assignment?.pointsPossible || 0,
-        };
-      });
-    
-    const projected = computeProjectedGrade(points);
-    return {
-      course,
-      current: course.currentGrade,
-      projected,
-    };
+function EarlyBirdCard({ data }: { data: AnalyticsData }) {
+  const submissionMap = new Map(data.submissions.map(s => [s.assignmentId, s]));
+  let earlyCount = 0, lateCount = 0, earlyEarned = 0, earlyPossible = 0, lateEarned = 0, latePossible = 0;
+
+  data.submissions.filter(s => s.score !== null && s.submittedAt).forEach(sub => {
+    const a = data.assignments.find(a => a.id === sub.assignmentId);
+    if (!a?.dueDate || !a.pointsPossible) return;
+    const daysBefore = (new Date(a.dueDate).getTime() - new Date(sub.submittedAt!).getTime()) / (1000 * 60 * 60 * 24);
+    if (sub.late) { lateCount++; lateEarned += sub.score!; latePossible += a.pointsPossible; }
+    else if (daysBefore >= 1) { earlyCount++; earlyEarned += sub.score!; earlyPossible += a.pointsPossible; }
   });
 
-  const onTrackForA = projections.filter(p => (p.projected ?? p.current ?? 0) >= 90).length;
+  const earlyAvg = earlyPossible > 0 ? Math.round((earlyEarned / earlyPossible) * 100) : null;
+  const lateAvg = latePossible > 0 ? Math.round((lateEarned / latePossible) * 100) : null;
 
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <Target className="h-4 w-4" />
-          Projected Final Grades
+          <Clock className="h-4 w-4" />Early vs late
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <p className="text-2xl font-bold">{onTrackForA} of {data.courses.length}</p>
-        <p className="text-xs text-muted-foreground">courses on track for A</p>
-        <div className="mt-2 space-y-1">
-          {projections.slice(0, 4).map(p => (
-            <div key={p.course.id} className="flex items-center justify-between text-xs">
-              <span className="truncate">{shortCourseName(p.course)}</span>
-              <span className={getGradeColor(p.projected ?? p.current)}>
-                {p.current !== null ? `${p.current}%` : '--'} 
-                {p.projected && p.projected !== p.current && (
-                  <span className="text-muted-foreground"> → {p.projected}%</span>
-                )}
-              </span>
+        {earlyAvg !== null && lateAvg !== null ? (
+          <>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold text-green-500">{earlyAvg}%</span>
+              <span className="text-muted-foreground text-sm">early</span>
+              <span className="text-muted-foreground">vs</span>
+              <span className="text-2xl font-bold text-red-500">{lateAvg}%</span>
+              <span className="text-muted-foreground text-sm">late</span>
             </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function EarlyBirdCard({ data }: { data: AnalyticsData }) {
-  const submissionsWithTiming = data.submissions
-    .filter(s => s.submittedAt && s.score !== null)
-    .map(s => {
-      const assignment = data.assignments.find(a => a.id === s.assignmentId);
-      return {
-        ...s,
-        timing: submissionTiming(s.submittedAt, assignment?.dueDate ?? null),
-        assignment,
-      };
-    });
-
-  const earlySubmissions = submissionsWithTiming.filter(s => s.timing === 'early');
-  const lateSubmissions = submissionsWithTiming.filter(s => s.timing === 'late');
-
-  if (submissionsWithTiming.length < 3) {
-    return (
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Clock className="h-4 w-4" />
-            Early Bird Advantage
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground text-sm">Not enough data yet</p>
-          <p className="text-xs text-muted-foreground mt-1">Submit 3+ assignments to see this</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const earlyAvg = earlySubmissions.length > 0
-    ? earlySubmissions.reduce((sum, s) => {
-        const assignment = s.assignment;
-        return sum + ((s.score! / (assignment?.pointsPossible || 1)) * 100);
-      }, 0) / earlySubmissions.length
-    : 0;
-
-  const lateAvg = lateSubmissions.length > 0
-    ? lateSubmissions.reduce((sum, s) => {
-        const assignment = s.assignment;
-        return sum + ((s.score! / (assignment?.pointsPossible || 1)) * 100);
-      }, 0) / lateSubmissions.length
-    : 0;
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <Clock className="h-4 w-4" />
-          Early Bird Advantage
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-2xl font-bold">
-          <span className="text-[oklch(var(--grade-safe))]">{Math.round(earlyAvg)}%</span>
-          <span className="text-muted-foreground text-lg mx-1">vs</span>
-          <span className="text-[oklch(var(--grade-danger))]">{Math.round(lateAvg)}%</span>
-        </p>
-        <p className="text-xs text-muted-foreground">early vs last-minute submissions</p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function GradeLeakCard({ data }: { data: AnalyticsData }) {
-  // Find missed low-stakes work (<20 pts)
-  const missedLowStakes = data.submissions
-    .filter(s => s.missing)
-    .map(s => {
-      const assignment = data.assignments.find(a => a.id === s.assignmentId);
-      return { submission: s, assignment };
-    })
-    .filter(item => item.assignment && item.assignment.pointsPossible < 20);
-
-  const pointsLost = missedLowStakes.reduce((sum, item) => 
-    sum + (item.assignment?.pointsPossible || 0), 0);
-
-  if (pointsLost === 0) {
-    return (
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Zap className="h-4 w-4" />
-            Silent Grade Leak
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-2xl font-bold text-[oklch(var(--grade-safe))]">0 pts</p>
-          <p className="text-xs text-muted-foreground">No points lost to missed low-stakes work</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <Zap className="h-4 w-4" />
-          Silent Grade Leak
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-2xl font-bold text-[oklch(var(--grade-danger))]">-{pointsLost} pts</p>
-        <p className="text-xs text-muted-foreground">from missed low-stakes work</p>
-        <div className="mt-2 space-y-1">
-          {missedLowStakes.slice(0, 3).map((item, i) => (
-            <p key={i} className="text-xs truncate text-muted-foreground">
-              {item.assignment?.name} ({item.assignment?.pointsPossible} pts)
+            <p className="text-xs text-muted-foreground mt-1">
+              {earlyAvg > lateAvg
+                ? `You score ${earlyAvg - lateAvg}% higher when you submit early`
+                : earlyAvg === lateAvg ? 'Timing does not seem to affect your scores'
+                : 'Late submissions score higher — timing may not be the issue'}
             </p>
-          ))}
-        </div>
+            <p className="text-xs text-muted-foreground mt-1">{earlyCount} early · {lateCount} late submissions</p>
+          </>
+        ) : (
+          <>
+            <p className="text-2xl font-bold text-muted-foreground">No data</p>
+            <p className="text-xs text-muted-foreground">Need both early and late submissions to compare</p>
+          </>
+        )}
       </CardContent>
     </Card>
   );
 }
 
 function WorkloadForecastCard({ data }: { data: AnalyticsData }) {
-  // Calculate hours due in next 2 weeks by day
-  const twoWeeksOut = new Date();
-  twoWeeksOut.setDate(twoWeeksOut.getDate() + 14);
-  
-  const upcomingByDay: Record<string, number> = {};
+  const now = new Date();
+  const twoWeeks = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
   const submissionMap = new Map(data.submissions.map(s => [s.assignmentId, s]));
-  
-  data.assignments
-    .filter(a => {
-      const sub = submissionMap.get(a.id);
-      return a.dueDate && 
-        new Date(a.dueDate) <= twoWeeksOut && 
-        new Date(a.dueDate) > new Date() &&
-        !sub?.submittedAt;
-    })
-    .forEach(a => {
-      const dayKey = new Date(a.dueDate!).toLocaleDateString('en-US', { weekday: 'short' });
-      const estimatedHours = a.pointsPossible > 50 ? 3 : a.pointsPossible > 20 ? 2 : 1;
-      upcomingByDay[dayKey] = (upcomingByDay[dayKey] || 0) + estimatedHours;
-    });
 
-  const chartData = Object.entries(upcomingByDay).map(([day, hours]) => ({
-    day,
-    hours,
-    fill: hours > 4 ? 'oklch(var(--grade-danger))' : hours > 2 ? 'oklch(var(--grade-warning))' : 'oklch(var(--grade-safe))',
-  }));
+  const upcoming = data.assignments.filter(a => {
+    if (!a.dueDate) return false;
+    const due = new Date(a.dueDate);
+    if (due < now || due > twoWeeks) return false;
+    const sub = submissionMap.get(a.id);
+    return !sub?.submittedAt && (sub?.score === null || sub?.score === undefined);
+  });
 
-  const totalHours = Object.values(upcomingByDay).reduce((sum, h) => sum + h, 0);
-  const busiestDay = Object.entries(upcomingByDay).sort((a, b) => b[1] - a[1])[0];
+  const byDay: Record<string, number> = {};
+  upcoming.forEach(a => {
+    const key = new Date(a.dueDate!).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    byDay[key] = (byDay[key] || 0) + 1;
+  });
+
+  const busiest = Object.entries(byDay).sort((a, b) => b[1] - a[1])[0];
 
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">Workload Forecast</CardTitle>
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <Zap className="h-4 w-4" />Next 2 weeks
+        </CardTitle>
       </CardHeader>
       <CardContent>
-        <p className="text-2xl font-bold">~{totalHours}h</p>
-        <p className="text-xs text-muted-foreground mb-2">due in 2 weeks</p>
-        {chartData.length > 0 ? (
-          <div className="h-20">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <XAxis dataKey="day" tick={{ fontSize: 10 }} />
-                <YAxis hide />
-                <Bar dataKey="hours" radius={[4, 4, 0, 0]}>
-                  {chartData.map((entry, index) => (
-                    <Cell key={index} fill={entry.fill} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">No upcoming work</p>
-        )}
-        {busiestDay && (
+        <p className="text-2xl font-bold">{upcoming.length}</p>
+        <p className="text-xs text-muted-foreground">assignments due</p>
+        {busiest && (
           <p className="text-xs text-muted-foreground mt-1">
-            Busiest: {busiestDay[0]} ({busiestDay[1]}h)
+            Busiest: <span className="font-medium text-foreground">{busiest[0]}</span> ({busiest[1]} due)
           </p>
+        )}
+        {Object.keys(byDay).length > 0 && (
+          <div className="mt-3 space-y-1">
+            {Object.entries(byDay).slice(0, 4).map(([day, count]) => (
+              <div key={day} className="flex items-center gap-2 text-xs">
+                <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" style={{ opacity: Math.min(1, count / 3) }} />
+                <span className="text-muted-foreground">{day}</span>
+                <span className="ml-auto font-medium">{count}</span>
+              </div>
+            ))}
+          </div>
         )}
       </CardContent>
     </Card>
@@ -476,87 +336,41 @@ function WorkloadForecastCard({ data }: { data: AnalyticsData }) {
 }
 
 function MomentumCard({ data }: { data: AnalyticsData }) {
-  // Calculate per-course trend
-  const trends = data.courses.map(course => {
-    const courseSubmissions = data.submissions
-      .filter(s => s.courseId === course.id && s.score !== null)
-      .sort((a, b) => new Date(a.submittedAt || 0).getTime() - new Date(b.submittedAt || 0).getTime());
-    
-    if (courseSubmissions.length < 2) return null;
-    
-    // Compare first half average to second half
-    const midpoint = Math.floor(courseSubmissions.length / 2);
-    const firstHalf = courseSubmissions.slice(0, midpoint);
-    const secondHalf = courseSubmissions.slice(midpoint);
-    
-    const avgFirst = firstHalf.reduce((sum, s) => {
-      const a = data.assignments.find(a => a.id === s.assignmentId);
-      return sum + ((s.score! / (a?.pointsPossible || 1)) * 100);
-    }, 0) / firstHalf.length;
-    
-    const avgSecond = secondHalf.reduce((sum, s) => {
-      const a = data.assignments.find(a => a.id === s.assignmentId);
-      return sum + ((s.score! / (a?.pointsPossible || 1)) * 100);
-    }, 0) / secondHalf.length;
-    
-    const delta = avgSecond - avgFirst;
-    
-    return {
-      course,
-      delta,
-      trend: delta > 2 ? 'up' : delta < -2 ? 'down' : 'stable',
-    };
-  }).filter(Boolean) as { course: Course; delta: number; trend: 'up' | 'down' | 'stable' }[];
+  // Show each course's current grade vs their actual Canvas grade
+  const courses = data.courses.filter(c => !/advisory|homeroom/i.test(c.name) && c.currentGrade !== null);
 
-  if (trends.length === 0) {
+  if (courses.length === 0) {
     return (
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">Momentum Tracker</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground text-sm">Not enough data yet</p>
-          <p className="text-xs text-muted-foreground mt-1">Need 2+ weeks of submissions</p>
-        </CardContent>
+      <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Course grades</CardTitle></CardHeader>
+        <CardContent><p className="text-sm text-muted-foreground">No grade data</p></CardContent>
       </Card>
     );
   }
 
-  const mostImproved = trends.filter(t => t.trend === 'up').sort((a, b) => b.delta - a.delta)[0];
-
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">Momentum Tracker</CardTitle>
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <Target className="h-4 w-4" />Your grades now
+        </CardTitle>
       </CardHeader>
       <CardContent>
-        {mostImproved && (
-          <>
-            <p className="text-2xl font-bold text-[oklch(var(--grade-safe))]">
-              +{Math.round(mostImproved.delta)}%
-            </p>
-            <p className="text-xs text-muted-foreground">{shortCourseName(mostImproved.course)} improving</p>
-          </>
-        )}
-        <div className="mt-2 space-y-1">
-          {trends.slice(0, 4).map(t => (
-            <div key={t.course.id} className="flex items-center justify-between text-xs">
-              <span className="truncate max-w-[100px]">{shortCourseName(t.course)}</span>
-              <span className="flex items-center gap-1">
-                {t.trend === 'up' && <TrendingUp className="h-3 w-3 text-[oklch(var(--grade-safe))]" />}
-                {t.trend === 'down' && <TrendingDown className="h-3 w-3 text-[oklch(var(--grade-danger))]" />}
-                {t.trend === 'stable' && <Minus className="h-3 w-3 text-muted-foreground" />}
-                {Math.round(Math.abs(t.delta))}%
-              </span>
-            </div>
-          ))}
+        <div className="space-y-2">
+          {courses.map(c => {
+            const shortName = c.name.includes(':') ? c.name.split(':').slice(1).join(':').trim().replace(/^(AP|IB|Honors) /i, '').split(' ').slice(0, 3).join(' ') : c.name.split(' ').slice(0, 3).join(' ');
+            return (
+              <div key={c.id} className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground truncate flex-1 mr-2">{shortName}</span>
+                <span className={`font-bold ${getGradeColor(c.currentGrade)}`} data-grade="true">{c.currentGrade}%</span>
+              </div>
+            );
+          })}
         </div>
       </CardContent>
     </Card>
   );
 }
 
-// ============ Monthly Wrap Cards ============
 
 function SemesterSnapshotCard({ data }: { data: AnalyticsData }) {
   return (
@@ -802,10 +616,10 @@ function GradeTrajectoryCard({ data }: { data: AnalyticsData }) {
       // Use both submission records AND embedded submissionScore on assignments
       // This catches grades posted by teacher but not "submitted" by student (in-class tests etc.)
       const courseSubmissions = data.submissions
-        .filter(s => s.courseId === course.id && s.score !== null)
+        .filter(s => s.courseId === course.id && s.score !== null && (s.submittedAt || s.gradedAt))
         .sort((a, b) => {
-          const aDate = a.submittedAt ? new Date(a.submittedAt).getTime() : 0;
-          const bDate = b.submittedAt ? new Date(b.submittedAt).getTime() : 0;
+          const aDate = new Date(a.submittedAt || a.gradedAt!).getTime();
+          const bDate = new Date(b.submittedAt || b.gradedAt!).getTime();
           return aDate - bDate;
         });
 
@@ -817,8 +631,7 @@ function GradeTrajectoryCard({ data }: { data: AnalyticsData }) {
         const assignment = data.assignments.find(a => a.id === s.assignmentId);
         const pts = assignment?.pointsPossible || 0;
         if (pts === 0) return null;
-        // Use the date graded if no submitted date (teacher graded without student submitting)
-        const dateToUse = s.submittedAt || (s as any).gradedAt;
+        const dateToUse = s.submittedAt || s.gradedAt;
         if (!dateToUse) return null;
         cumEarned += s.score!;
         cumPossible += pts;

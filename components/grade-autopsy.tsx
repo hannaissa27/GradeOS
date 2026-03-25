@@ -177,37 +177,20 @@ export function GradeAutopsy({ courses, allAssignments, allSubmissions }: GradeA
     };
 
     try {
+      const userMsg = [
+        `Course: ${candidate.course.name}`,
+        `Bombed: "${candidate.assignment.name}" — ${Math.round(candidate.pct)}% (course avg: ${Math.round(candidate.coursePct)}%)`,
+        `Points lost: ${candidate.assignment.pointsPossible - candidate.submission.score!} / ${candidate.assignment.pointsPossible}`,
+        `Study timing: ${timingLabels[session.studyTiming!]}`,
+        `Exit feeling: ${feelingLabels[feeling]}`,
+        courseHistory ? `Recent grades: ${courseHistory}` : '',
+        nextAssignment ? `Next assignment: "${nextAssignment.name}" due ${nextAssignment.dueDate ? new Date(nextAssignment.dueDate).toLocaleDateString() : 'unknown'}` : '',
+      ].filter(Boolean).join('. ');
+
       const response = await callClaude(
-        `Student grade data:
-Course: ${candidate.course.name}
-Bombed assignment: "${candidate.assignment.name}" — scored ${Math.round(candidate.pct)}% (their course average is ${Math.round(candidate.coursePct)}%)
-Points lost: ${candidate.assignment.pointsPossible - candidate.submission.score!} out of ${candidate.assignment.pointsPossible}
-Study timing: started studying ${timingLabels[session.studyTiming!]}
-Exit feeling: ${feelingLabels[feeling]}
+        userMsg,
 
-Recent grade history in this course:
-${courseHistory}
-
-${nextAssignment ? `Next upcoming assignment: "${nextAssignment.name}" due ${nextAssignment.dueDate ? new Date(nextAssignment.dueDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'unknown'}, ${nextAssignment.pointsPossible} points` : 'No upcoming assignments found'}`,
-
-        `You are an academic coach doing a grade autopsy — figuring out exactly why a student bombed an assignment.
-
-There are exactly four failure types:
-1. "time_failure" — they ran out of time to study or finish properly
-2. "confidence_illusion" — they felt ready but weren't (familiarity mistaken for knowledge)
-3. "knowledge_gap" — there was material they genuinely never understood
-4. "test_taking_failure" — they knew the material but couldn't produce it under exam pressure
-
-Based on the student's answers and grade pattern, diagnose which failure type this is.
-
-Return ONLY valid JSON:
-{
-  "failureType": "one of the four types above",
-  "failureLabel": "Short 2-4 word label, e.g. 'Confidence Illusion' or 'Time Failure'",
-  "diagnosis": "2-3 sentences. Be direct and specific. Name what actually happened. Don't be gentle — students need clarity not comfort. Reference their specific answers.",
-  "nextAction": "One concrete, specific action for their NEXT assignment (use the assignment name if provided). Not 'study more.' Something like: 'For [assignment name] due [date]: write down every concept you're unsure about in 10 minutes, then look up only those — not everything.' Make it feel immediately doable."
-}
-Return ONLY the JSON. No markdown, no extra text.`,
+        'You are an academic coach. Diagnose why a student bombed an assignment. Four failure types: time_failure, confidence_illusion, knowledge_gap, test_taking_failure. Return ONLY this JSON (no markdown): {"failureType":"one of the four","failureLabel":"2-4 word label","diagnosis":"2-3 direct sentences naming what happened","nextAction":"one concrete next step for their next assignment"}',
         600
       );
 

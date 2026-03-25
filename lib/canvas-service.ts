@@ -274,7 +274,7 @@ export async function fetchSubmissions(courseId: string, connection: CanvasConne
         score: a.submission.score ?? null,
         grade: a.submission.grade || null,
         submittedAt: a.submission.submitted_at || null,
-        gradeedAt: a.submission.graded_at || null,
+        gradedAt: a.submission.graded_at || null,
         late: a.submission.late || false,
         // Don't mark as missing if already submitted/graded, or if no online submission needed
         missing: (() => {

@@ -18,13 +18,13 @@ export function SemesterArc({ assignments, submissions, isLoading }: SemesterArc
     const semesterStart = new Date(getSemesterStart());
 
     const gradedSubmissions = submissions
-      .filter((s) => s.score !== null && s.submittedAt)
-      .filter((s) => new Date(s.submittedAt!) >= semesterStart)
+      .filter((s) => s.score !== null && (s.submittedAt || s.gradedAt))
+      .filter((s) => new Date(s.submittedAt || s.gradedAt!).getTime() >= semesterStart.getTime())
       .map((sub) => {
         const assignment = assignments.find((a) => a.id === sub.assignmentId);
-        if (!assignment) return null;
+        if (!assignment || !assignment.pointsPossible) return null;
         return {
-          date: new Date(sub.submittedAt!).getTime(),
+          date: new Date(sub.submittedAt || sub.gradedAt!).getTime(),
           score: sub.score!,
           possible: assignment.pointsPossible,
           name: assignment.name,

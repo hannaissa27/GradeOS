@@ -372,15 +372,22 @@ function FirstMoveButton({ assignment }: { assignment: Assignment }) {
 
     setLoading(true);
     try {
-      const prompt = `Assignment: "${assignment.name}"
-Points: ${assignment.pointsPossible}
-Due: ${assignment.dueDate ? new Date(assignment.dueDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'No due date'}
-Description: ${assignment.description ? assignment.description.replace(/<[^>]+>/g, '').slice(0, 400) : 'No description'}`;
+      // Strip HTML and limit length to avoid Anthropic 400 errors
+      const cleanDesc = (assignment.description || '')
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 300);
 
-      const response = await callClaude(prompt,
-        `You help students start assignments. Return ONLY valid JSON:
-{"plain":"One sentence what the student actually has to do. Start with a verb.","firstStep":"The single first physical action taking under 2 minutes.","timeEstimate":"Realistic time like 'About 45 minutes'"}`,
-        400);
+      const prompt = `Assignment: ${assignment.name}. Points: ${assignment.pointsPossible}. Due: ${assignment.dueDate ? new Date(assignment.dueDate).toLocaleDateString() : 'No due date'}. ${cleanDesc ? `Description: ${cleanDesc}` : ''}`.trim();
+
+      const response = await callClaude(
+        prompt,
+        'Help a student start this assignment. Reply with ONLY this JSON (no markdown): {"plain":"one sentence describing the task, starting with a verb","firstStep":"one concrete action under 2 minutes","timeEstimate":"realistic estimate like About 45 minutes"}',
+        300
+      );
 
       const parsed = JSON.parse(response.replace(/```json|```/g, '').trim());
       if (parsed.plain && parsed.firstStep && parsed.timeEstimate) setResult(parsed);

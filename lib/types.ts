@@ -49,7 +49,7 @@ export interface Submission {
   grade: number | null;
   score: number | null;
   submittedAt: string | null;
-  gradeedAt: string | null;
+  gradedAt: string | null;
   late: boolean;
   missing: boolean;
   excused: boolean;
