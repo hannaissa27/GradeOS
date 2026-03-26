@@ -38,6 +38,10 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
   const [newCustomPoints, setNewCustomPoints] = useState('');
   const [newCustomGroup, setNewCustomGroup] = useState('');
   const [showAddCustom, setShowAddCustom] = useState(false);
+  const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editPoints, setEditPoints] = useState('');
+  const [editGroup, setEditGroup] = useState('');
 
   const submissionMap = useMemo(() =>
     new Map(submissions.map(s => [s.assignmentId, s])),
@@ -74,7 +78,7 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
       if (!groupMap.has(gid)) {
         groupMap.set(gid, {
           id: gid,
-          name: `Category ${gid}`, // will be overwritten below
+          name: (a as any).assignmentGroupName || `Group ${gid}`,
           weight: a.assignmentGroupWeight || 0,
           earned: 0, possible: 0, remaining: 0, customRemaining: 0,
         });
@@ -248,10 +252,10 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
         <div className="flex items-center gap-2">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <Target className="h-4 w-4 text-primary" />
-            Grade Rescue
+            Grade Planner
           </CardTitle>
           <HelpTip text={hasWeights
-            ? "This course uses weighted categories (e.g. Tests = 40%, Homework = 20%). Grade Rescue calculates what you need on each remaining assignment per category to hit your target grade. Add any upcoming assignments not yet on Canvas using 'Add manually'."
+            ? "This course uses weighted categories (e.g. Tests = 40%, Homework = 20%). Grade Planner calculates what you need on each remaining assignment per category to hit your target grade. Add any upcoming assignments not yet on Canvas using 'Add manually'."
             : "Type your target grade to see the minimum you need on every remaining assignment. Add future assignments not yet on Canvas using 'Add manually'."
           } />
         </div>
@@ -268,7 +272,7 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
             <p className={`text-xs ${getGradeColor(gradeDisplay)}`}>{gradeToLetter(gradeDisplay)}</p>
           </div>
           <div className="text-center p-3 rounded-lg bg-muted/50">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">If you keep going</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">If you keep this average</p>
             <p className={`text-xl font-bold ${getGradeColor(projected)}`} data-grade="true">
               {projected !== null ? `${projected}%` : '—'}
             </p>
@@ -283,6 +287,11 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
           </div>
         </div>
 
+        <p className="text-[10px] text-muted-foreground leading-relaxed">
+          <strong className="text-foreground">Best possible</strong> = if you get 100% on everything left.
+          <strong className="text-foreground"> If you keep this average</strong> = if you score the same percentage on remaining work as you have been.
+        </p>
+
         {/* Category breakdown if weighted */}
         {hasWeights && groups.length > 1 && (
           <div className="space-y-2">
@@ -294,8 +303,8 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
                 return (
                   <div key={g.id} className="flex items-center justify-between text-xs px-3 py-2 rounded-lg bg-muted/30">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-foreground">{g.weight}%</span>
-                      <span className="text-muted-foreground">of grade</span>
+                      <span className="font-medium text-foreground">{g.name || `${g.weight}% category`}</span>
+                      <span className="text-muted-foreground text-[10px]">{g.weight}% of grade</span>
                     </div>
                     <div className="flex items-center gap-3">
                       {catGrade !== null && (
@@ -358,7 +367,7 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
                     {rescueCalc.perGroup.map(g => (
                       g.futurePts > 0 && (
                         <div key={g.id} className="flex items-center justify-between text-xs px-3 py-1.5 rounded bg-muted/30">
-                          <span className="text-muted-foreground">{g.weight}% category — {g.futurePts} pts left</span>
+                          <span className="text-muted-foreground">{g.name || `${g.weight}% category`} — {g.futurePts} pts left</span>
                           <span className={`font-bold ${g.neededPct >= 90 ? 'text-red-500' : g.neededPct >= 75 ? 'text-amber-500' : 'text-green-500'}`}>
                             Need {g.neededPct}%
                           </span>
@@ -413,16 +422,51 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
           <div className="space-y-1">
             <p className="text-xs text-muted-foreground font-medium">Added manually</p>
             {customAssignments.map(a => (
-              <div key={a.id} className="flex items-center justify-between text-xs px-2 py-1.5 rounded bg-primary/5">
-                <span className="text-primary font-medium truncate flex-1">{a.name}</span>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="text-muted-foreground">{a.pointsPossible} pts</span>
-                  <button onClick={() => setCustomAssignments(p => p.filter(x => x.id !== a.id))}
-                    className="text-muted-foreground hover:text-destructive cursor-pointer">
-                    <X className="h-3 w-3" />
-                  </button>
+              editingCustomId === a.id ? (
+                <div key={a.id} className="space-y-2 p-2 rounded-lg border border-primary/30 bg-primary/5">
+                  <Input placeholder="Name" value={editName} onChange={e => setEditName(e.target.value)} className="h-7 text-xs" />
+                  <div className="flex gap-2">
+                    <Input type="number" placeholder="Points" value={editPoints} onChange={e => setEditPoints(e.target.value)} className="h-7 text-xs w-24" />
+                    {hasWeights && groups.length > 1 && (
+                      <select value={editGroup} onChange={e => setEditGroup(e.target.value)}
+                        className="flex-1 h-7 text-xs rounded-md border border-input bg-background px-2">
+                        {groups.map(g => <option key={g.id} value={g.id}>{g.name || `${g.weight}%`} ({g.weight}%)</option>)}
+                      </select>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => {
+                      const pts = parseFloat(editPoints);
+                      if (!editName.trim() || isNaN(pts) || pts <= 0) return;
+                      setCustomAssignments(p => p.map(x => x.id === a.id
+                        ? { ...x, name: editName.trim(), pointsPossible: pts, groupId: editGroup || x.groupId }
+                        : x));
+                      setEditingCustomId(null);
+                    }} className="flex-1 py-1 text-xs bg-primary text-primary-foreground rounded cursor-pointer hover:bg-primary/90">
+                      Save
+                    </button>
+                    <button onClick={() => setEditingCustomId(null)} className="px-2 py-1 text-xs border border-border rounded cursor-pointer hover:bg-accent">
+                      Cancel
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div key={a.id} className="flex items-center justify-between text-xs px-2 py-1.5 rounded bg-primary/5 group cursor-pointer"
+                  onClick={() => { setEditingCustomId(a.id); setEditName(a.name); setEditPoints(String(a.pointsPossible)); setEditGroup(a.groupId); }}>
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="text-primary font-medium truncate">{a.name}</span>
+                    <span className="text-muted-foreground">{a.pointsPossible} pts</span>
+                    {hasWeights && <span className="text-muted-foreground text-[10px]">{groups.find(g => g.id === a.groupId)?.name || ''}</span>}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-[10px] text-muted-foreground">Edit</span>
+                    <button onClick={e => { e.stopPropagation(); setCustomAssignments(p => p.filter(x => x.id !== a.id)); }}
+                      className="text-muted-foreground hover:text-destructive cursor-pointer">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+              )
             ))}
           </div>
         )}
@@ -437,7 +481,7 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
               {hasWeights && groups.length > 1 && (
                 <select value={newCustomGroup} onChange={e => setNewCustomGroup(e.target.value)}
                   className="flex-1 h-8 text-xs rounded-md border border-input bg-background px-2">
-                  {groups.map(g => <option key={g.id} value={g.id}>{g.weight}% category</option>)}
+                  {groups.map(g => <option key={g.id} value={g.id}>{g.name || `${g.weight}% category`} ({g.weight}%)</option>)}
                 </select>
               )}
             </div>

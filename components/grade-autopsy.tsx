@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Loader2, ChevronRight, X, AlertTriangle } from 'lucide-react';
+import { Loader2, ChevronRight, ChevronDown, AlertTriangle } from 'lucide-react';
 import { callClaude, hasAIKey } from '@/lib/aiUtils';
 import { courseColor, gradeToLetter, formatDueDate } from '@/lib/gradeUtils';
 import { HelpTip } from '@/components/help-tip';
@@ -50,6 +50,7 @@ const FAILURE_BG: Record<FailureType, string> = {
 export function GradeAutopsy({ courses, allAssignments, allSubmissions }: GradeAutopsyProps) {
   const [sessions, setSessions] = useState<Map<string, AutopsySession>>(new Map());
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   
   React.useEffect(() => {
     try {
@@ -245,32 +246,30 @@ export function GradeAutopsy({ courses, allAssignments, allSubmissions }: GradeA
                 </div>
               </div>
               <button
-                onClick={() => dismiss(assignment.id)}
+                onClick={() => setCollapsed(prev => {
+                  const next = new Set(prev);
+                  next.has(assignment.id) ? next.delete(assignment.id) : next.add(assignment.id);
+                  return next;
+                })}
                 className="text-muted-foreground hover:text-foreground cursor-pointer p-1 flex-shrink-0"
               >
-                <X className="h-3.5 w-3.5" />
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${collapsed.has(assignment.id) ? '-rotate-90' : ''}`} />
               </button>
             </div>
 
             {/* Content based on session state */}
-            {!session ? (
+            {!collapsed.has(assignment.id) && (!session ? (
               /* Prompt to start */
               <div className="px-3 pb-3">
                 <p className="text-xs text-muted-foreground mb-2">
                   Something went wrong here. Let's figure out what — takes 10 seconds.
                 </p>
-                {!hasAIKey() ? (
-                  <p className="text-xs text-amber-600 dark:text-amber-400">
-                    Add your Anthropic API key in <strong>Settings</strong> to run the analysis.
-                  </p>
-                ) : (
                   <button
                     onClick={() => setSession(assignment.id, { assignmentId: assignment.id, step: 'q1' })}
                     className="flex items-center gap-1.5 text-xs font-medium text-red-500 hover:text-red-600 cursor-pointer transition-colors"
                   >
                     Run autopsy <ChevronRight className="h-3 w-3" />
                   </button>
-                )}
               </div>
             ) : session.step === 'q1' ? (
               /* Q1: Study timing */
@@ -346,7 +345,7 @@ export function GradeAutopsy({ courses, allAssignments, allSubmissions }: GradeA
                   </div>
                 )}
               </div>
-            ) : null}
+            ) : null)}
           </div>
         );
       })}

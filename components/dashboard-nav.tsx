@@ -26,13 +26,6 @@ interface DashboardNavProps {
 function SettingsPanel() {
   const { isConnected, connection, disconnect } = useCanvas();
   const { theme, toggle } = useTheme();
-  const [aiKey, setAiKey] = useState('');
-  const [aiKeySet, setAiKeySet] = useState(false);
-  // Check for existing key after mount (localStorage not available during SSR)
-  React.useEffect(() => {
-    setAiKeySet(!!localStorage.getItem('gradeos-ai-key'));
-  }, []);
-  const [aiStep, setAiStep] = useState(1);
   const [showUrlEdit, setShowUrlEdit] = useState(false);
   const [supaStatus, setSupaStatus] = useState<'idle'|'checking'|'ok'|'error'>('idle');
   const [open, setOpen] = useState(false);
@@ -133,113 +126,19 @@ function SettingsPanel() {
           {/* AI Features */}
           <section className="space-y-3">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">AI Features</h3>
-            <div className="rounded-xl border border-border p-5 space-y-4">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-sm font-medium">Anthropic API Key</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Required for First Move, Grade Autopsy, and Exam Brain. Free to get — you need your own key.
-                  </p>
-                </div>
-                <div className={`flex items-center gap-1 text-xs flex-shrink-0 ${aiKeySet ? 'text-green-500' : 'text-muted-foreground'}`}>
-                  {aiKeySet ? <><CheckCircle2 className="w-3.5 h-3.5" />Active</> : <><AlertCircle className="w-3.5 h-3.5" />Not set</>}
-                </div>
+            <div className="rounded-xl border border-border p-5 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">AI features</p>
+                <span className="text-xs text-green-500 flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5" />Included
+                </span>
               </div>
-
-              {aiKeySet ? (
-                <div className="space-y-2">
-                  <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
-                    <p className="font-medium text-foreground mb-1">AI features unlocked:</p>
-                    <p>• First Move — "How do I start?" on any assignment</p>
-                    <p>• Grade Autopsy — automatic diagnosis when you bomb a test</p>
-                    <p>• Syllabus Spy — extract all dates from your syllabus</p>
-                  </div>
-                  <button onClick={removeAiKey} className="text-xs text-red-500 hover:text-red-600 cursor-pointer underline">
-                    Remove API key
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {/* Step 1 */}
-                  <div className={`rounded-lg border p-3 space-y-2 ${aiStep >= 1 ? 'border-primary/30 bg-primary/5' : 'border-border opacity-50'}`}>
-                    <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center flex-shrink-0">1</span>
-                      <p className="text-xs font-medium">Create a free Anthropic account</p>
-                    </div>
-                    <p className="text-xs text-muted-foreground pl-7">Sign up at console.anthropic.com — free, gives you $5 credit (enough for thousands of uses).</p>
-                    <div className="pl-7">
-                      <a href="https://console.anthropic.com/login" target="_blank" rel="noopener noreferrer"
-                        onClick={() => setAiStep(2)}
-                        className="inline-flex items-center gap-1 text-xs text-primary font-medium hover:underline">
-                        Open Anthropic Console <ExternalLink className="w-3 h-3" />
-                      </a>
-                    </div>
-                  </div>
-
-                  {/* Step 2 */}
-                  <div className={`rounded-lg border p-3 space-y-2 ${aiStep >= 2 ? 'border-primary/30 bg-primary/5' : 'border-border opacity-40'}`}>
-                    <div className="flex items-center gap-2">
-                      <span className={`w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center flex-shrink-0 ${aiStep >= 2 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>2</span>
-                      <p className="text-xs font-medium">Create an API key</p>
-                    </div>
-                    <div className="pl-7 text-xs text-muted-foreground space-y-1">
-                      <p>Click <strong className="text-foreground">API Keys</strong> in the sidebar → <strong className="text-foreground">Create Key</strong></p>
-                      <p>Name it anything. Copy the key — it starts with <code className="bg-muted px-1 rounded">sk-ant-</code></p>
-                    </div>
-                    {aiStep >= 2 && (
-                      <div className="pl-7 flex items-center gap-3">
-                        <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener noreferrer"
-                          onClick={() => setAiStep(3)}
-                          className="inline-flex items-center gap-1 text-xs text-primary font-medium hover:underline">
-                          Go to API Keys <ExternalLink className="w-3 h-3" />
-                        </a>
-                        <button onClick={() => setAiStep(3)} className="text-xs text-muted-foreground hover:text-foreground cursor-pointer underline">
-                          I have my key →
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Step 3 */}
-                  <div className={`rounded-lg border p-3 space-y-2 ${aiStep >= 3 ? 'border-primary/30 bg-primary/5' : 'border-border opacity-40'}`}>
-                    <div className="flex items-center gap-2">
-                      <span className={`w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center flex-shrink-0 ${aiStep >= 3 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>3</span>
-                      <p className="text-xs font-medium">Paste your key here</p>
-                    </div>
-                    {aiStep >= 3 ? (
-                      <div className="pl-7 space-y-2">
-                        <Input
-                          type="password"
-                          placeholder="sk-ant-api03-..."
-                          value={aiKey}
-                          onChange={e => setAiKey(e.target.value)}
-                          onKeyDown={e => e.key === 'Enter' && saveAiKey()}
-                          className="text-xs h-8"
-                          autoFocus
-                        />
-                        <button
-                          onClick={saveAiKey}
-                          disabled={!aiKey.trim()}
-                          className="w-full py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium cursor-pointer hover:bg-primary/90 transition-colors disabled:opacity-50"
-                        >
-                          Activate AI Features
-                        </button>
-                        <p className="text-xs text-muted-foreground">Stored only in your browser. Never sent to any server.</p>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground pl-7">Paste your key here once you have it.</p>
-                    )}
-                  </div>
-
-                  {aiStep < 3 && (
-                    <button onClick={() => setAiStep(3)} className="text-xs text-muted-foreground hover:text-foreground cursor-pointer underline">
-                      Already have a key? Skip to step 3
-                    </button>
-                  )}
-                </div>
-              )}
+              <p className="text-xs text-muted-foreground">
+                Grade Autopsy, How to start, and Syllabus Spy are all built in. No API key setup needed.
+              </p>
             </div>
           </section>
+
 
           {/* System status */}
           <section className="space-y-3">
@@ -259,9 +158,7 @@ function SettingsPanel() {
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">AI features</span>
-                <span className={aiKeySet ? 'text-green-500' : 'text-muted-foreground'}>
-                  {aiKeySet ? 'Active' : 'No key set'}
-                </span>
+                <span className="text-green-500">Active</span>
               </div>
               {supaStatus === 'error' && (
                 <div className="text-xs bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 mt-1 space-y-2">

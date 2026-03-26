@@ -1,7 +1,27 @@
-// AI is now handled server-side via Vercel AI Gateway.
-// No API key is needed from users.
+const AI_KEY_STORAGE = 'gradeos-ai-key';
 
-export async function callAI(
+// Legacy - kept for backwards compat but server key is used now
+export function getAnthropicKey(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(AI_KEY_STORAGE);
+}
+
+export function setAnthropicKey(key: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(AI_KEY_STORAGE, key.trim());
+}
+
+export function removeAnthropicKey(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(AI_KEY_STORAGE);
+}
+
+// AI always available - key is on the server
+export function hasAIKey(): boolean {
+  return true;
+}
+
+export async function callClaude(
   userPrompt: string,
   systemPrompt: string,
   maxTokens = 800
@@ -9,10 +29,14 @@ export async function callAI(
   const res = await fetch('/api/ai', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt: userPrompt, system: systemPrompt, maxTokens }),
+    body: JSON.stringify({
+      prompt: userPrompt,
+      system: systemPrompt,
+      maxTokens,
+    }),
   });
 
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
     throw new Error(data.error || 'AI request failed');
@@ -21,17 +45,8 @@ export async function callAI(
   return data.text || '';
 }
 
-// Kept for backward compatibility — components that called callClaude still work
-export const callClaude = callAI;
-
-// No-op stubs — key management no longer needed
-export function getAnthropicKey(): string | null { return null; }
-export function setAnthropicKey(_key: string): void {}
-export function removeAnthropicKey(): void {}
-export function hasAIKey(): boolean { return true; }
-
 export async function summarizeAnnouncements(announcements: { title: string; message: string }[]): Promise<string> {
-  return callAI(
+  return callClaude(
     announcements.map(a => `${a.title}\n${a.message}`).join('\n---\n'),
     'Summarize these course announcements briefly. Focus on deadlines and required actions.',
     400
@@ -39,7 +54,7 @@ export async function summarizeAnnouncements(announcements: { title: string; mes
 }
 
 export async function chunkAssignment(title: string, description: string): Promise<string[]> {
-  const response = await callAI(
+  const response = await callClaude(
     `Title: ${title}\nDescription: ${description || 'No description'}`,
     'Break this assignment into 4-8 actionable steps. Return ONLY a JSON array of strings.',
     400
@@ -52,7 +67,7 @@ export async function chunkAssignment(title: string, description: string): Promi
 }
 
 export async function extractSyllabusDates(text: string): Promise<{ date: string; event: string }[]> {
-  const response = await callAI(
+  const response = await callClaude(
     text.slice(0, 4000),
     'Extract all dates and events from this syllabus. Return ONLY a JSON array: [{"date":"YYYY-MM-DD","event":"description"}]',
     800

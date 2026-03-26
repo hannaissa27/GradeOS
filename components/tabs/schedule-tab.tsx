@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ChevronLeft, ChevronRight, Trash2, GripVertical, Pin, PinOff } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Trash2, GripVertical, Pin, PinOff, X } from 'lucide-react';
 import { courseColor, formatDueDate, minutesToLabel } from '@/lib/gradeUtils';
 import type { Assignment, Submission, Course, TimeBlock, Todo } from '@/lib/types';
 
@@ -34,6 +34,7 @@ export function ScheduleTab({
   const [blocksLoading, setBlocksLoading] = useState(true);
   const [draggedAssignment, setDraggedAssignment] = useState<Assignment | null>(null);
   const [dropError, setDropError] = useState<string | null>(null);
+  const [hiddenAssignmentIds, setHiddenAssignmentIds] = useState<Set<string>>(new Set());
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
   useEffect(() => {
     try {
@@ -94,7 +95,7 @@ export function ScheduleTab({
   // Pinned = assignments explicitly added to schedule list
   const pinnedAssignments = pendingAssignments.filter(a => pinnedIds.has(a.id));
   // Unpinned shown in suggestion pool
-  const unpinnedAssignments = pendingAssignments.filter(a => !pinnedIds.has(a.id));
+  const unpinnedAssignments = pendingAssignments.filter(a => !pinnedIds.has(a.id) && !hiddenAssignmentIds.has(a.id));
 
   const handlePin = (assignmentId: string) => {
     setPinnedIds(prev => {
@@ -237,9 +238,14 @@ export function ScheduleTab({
                   <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: courseColor(a.courseId) }} />
                   <p className="text-xs truncate">{a.name}</p>
                 </div>
-                <button onClick={() => handlePin(a.id)} className="text-muted-foreground hover:text-foreground cursor-pointer flex-shrink-0 p-0.5" title="Add to schedule list">
-                  <Pin className="h-3 w-3" />
-                </button>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button onClick={() => handlePin(a.id)} className="text-muted-foreground hover:text-foreground cursor-pointer p-0.5" title="Add to schedule list">
+                    <Pin className="h-3 w-3" />
+                  </button>
+                  <button onClick={() => setHiddenAssignmentIds(prev => new Set([...prev, a.id]))} className="text-muted-foreground hover:text-destructive cursor-pointer p-0.5" title="Remove from list">
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
               </div>
             ))}
             {unpinnedAssignments.length === 0 && pinnedAssignments.length > 0 && (
@@ -248,8 +254,31 @@ export function ScheduleTab({
             {pendingAssignments.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-4">No pending assignments</p>
             )}
+            {hiddenAssignmentIds.size > 0 && (
+              <button onClick={() => setHiddenAssignmentIds(new Set())} className="text-[10px] text-muted-foreground underline cursor-pointer mt-1">
+                Show {hiddenAssignmentIds.size} hidden
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Todos section */}
+        {todos.length > 0 && (
+          <div>
+            <h3 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">My Todos</h3>
+            <div className="space-y-1.5">
+              {todos.filter(t => !t.completed).map(t => (
+                <div key={t.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md hover:bg-accent/50 transition-colors">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-primary/60" />
+                    <p className="text-xs truncate">{t.title}</p>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground flex-shrink-0">Todo</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Calendar */}

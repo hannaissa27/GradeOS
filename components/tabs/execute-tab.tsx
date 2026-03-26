@@ -110,7 +110,7 @@ export function ExecuteTab({
         />
       )}
 
-      {/* Crunch Forecast — collapsible, open by default */}
+      {/* Workload Planner — collapsible, open by default */}
       {!isLoading && (
         <div className="rounded-lg border border-border">
           <button
@@ -118,7 +118,7 @@ export function ExecuteTab({
             className="w-full flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-accent/30 transition-colors"
           >
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">Crunch Forecast</span>
+              <span className="text-sm font-medium">Workload Planner</span>
               <HelpTip text="Shows you the next 14 days as columns. Each assignment sits in the day it's due, sized by how long it takes. When a day has more work than your daily capacity, it turns red — that's a crunch day. Use the suggestions to spread work earlier and avoid last-minute panic." />
             </div>
             <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${crunchOpen ? 'rotate-180' : ''}`} />

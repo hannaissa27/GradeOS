@@ -152,7 +152,7 @@ export function CrunchForecast({
       {missingEffort.length > 0 && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
           <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-2">
-            {missingEffort.length} assignment{missingEffort.length !== 1 ? 's' : ''} missing effort estimates — Crunch Forecast works best when all assignments have estimates
+            {missingEffort.length} assignment{missingEffort.length !== 1 ? 's' : ''} missing effort estimates — Workload Planner works best when all assignments have estimates
           </p>
           <div className="space-y-2">
             {missingEffort.slice(0, 4).map(a => (
@@ -270,36 +270,60 @@ export function CrunchForecast({
         </div>
       )}
 
-      {/* Suggestions */}
-      {suggestions.length > 0 && (
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Suggested — move these earlier to avoid crunch</p>
-          {suggestions.map((s, i) => {
-            const a = pendingAssignments.find(x => x.id === s.assignmentId);
-            if (!a) return null;
-            return (
-              <div key={i} className="flex items-center justify-between text-xs bg-muted/30 rounded-lg px-3 py-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: courseColor(a.courseId) }} />
-                  <span className="truncate">{a.name}</span>
-                  <span className="text-muted-foreground flex-shrink-0">({minutesToLabel(effortOverrides.get(a.id) ?? 60)})</span>
+      {/* Crunch day breakdown + suggestions */}
+      {suggestions.length > 0 && (() => {
+        // Group suggestions by the crunch day they fix
+        const crunchDays = [...new Set(suggestions.map(s => s.fromDay.toDateString()))];
+        return (
+          <div className="space-y-3">
+            <p className="text-xs font-semibold">Your overloaded days — here is how to split them:</p>
+            {crunchDays.map(dayStr => {
+              const daySuggestions = suggestions.filter(s => s.fromDay.toDateString() === dayStr);
+              const day = daySuggestions[0].fromDay;
+              const totalHours = getHoursForDay(day);
+              return (
+                <div key={dayStr} className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-red-500">
+                      {day.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                    </p>
+                    <p className="text-xs text-red-500">
+                      {totalHours.toFixed(1)}h work vs {capacityHours}h limit
+                    </p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Move these to earlier days to get under your {capacityHours}h limit:
+                  </p>
+                  {daySuggestions.map((s, i) => {
+                    const a = pendingAssignments.find(x => x.id === s.assignmentId);
+                    if (!a) return null;
+                    const mins = effortOverrides.get(a.id) ?? 60;
+                    return (
+                      <div key={i} className="flex items-center justify-between gap-2 bg-background rounded-lg px-3 py-2">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: courseColor(a.courseId) }} />
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium truncate">{a.name}</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {minutesToLabel(mins)} → move to {s.toDay.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleShiftLeft(s.assignmentId)}
+                          className="text-xs px-3 py-1 rounded-lg bg-primary text-primary-foreground cursor-pointer hover:bg-primary/90 transition-colors flex-shrink-0 font-medium"
+                        >
+                          Move it
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                  <span className="text-muted-foreground">
-                    Start on {s.toDay.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                  </span>
-                  <button
-                    onClick={() => handleShiftLeft(s.assignmentId)}
-                    className="text-[10px] px-2 py-0.5 rounded bg-primary text-primary-foreground cursor-pointer hover:bg-primary/90 transition-colors"
-                  >
-                    Move
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Legend */}
       <div className="flex items-center gap-4 text-[10px] text-muted-foreground">

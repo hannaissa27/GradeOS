@@ -200,11 +200,15 @@ export async function fetchAssignments(courseId: string, connection: CanvasConne
 
     // Also fetch assignment groups to get weights
     let groupWeights: Record<string, number> = {};
+    let groupNames: Record<string, string> = {};
     try {
       const groups = await canvasFetch<any>(`/courses/${courseId}/assignment_groups?per_page=100`, connection);
       if (Array.isArray(groups)) {
         groups.forEach((g: any) => {
-          if (g.id != null) groupWeights[String(g.id)] = g.group_weight || 0;
+          if (g.id != null) {
+            groupWeights[String(g.id)] = g.group_weight || 0;
+            groupNames[String(g.id)] = g.name || '';
+          }
         });
       }
     } catch {}
@@ -230,6 +234,7 @@ export async function fetchAssignments(courseId: string, connection: CanvasConne
         published: a.published,
         assignmentGroupId: a.assignment_group_id ? String(a.assignment_group_id) : null,
         assignmentGroupWeight: a.assignment_group_id ? (groupWeights[String(a.assignment_group_id)] || 0) : 0,
+        assignmentGroupName: a.assignment_group_id ? (groupNames[String(a.assignment_group_id)] || '') : '',
         // Embedded submission data from include[]=submission
         submissionScore: a.submission?.score ?? null,
         submissionState: a.submission?.workflow_state || 'unsubmitted',

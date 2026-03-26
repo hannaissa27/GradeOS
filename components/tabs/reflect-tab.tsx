@@ -170,27 +170,31 @@ function GradeRiskCard({ data }: { data: AnalyticsData }) {
 }
 
 function GradeChangeCard({ data }: { data: AnalyticsData }) {
+  // Compare running grade at the midpoint of semester vs now
   const changes = data.courses
-    .filter(c => !/advisory|homeroom/i.test(c.name))
+    .filter(c => !/advisory|homeroom/i.test(c.name) && c.currentGrade !== null)
     .map(course => {
       const subs = data.submissions
         .filter(s => s.courseId === course.id && s.score !== null && (s.submittedAt || s.gradedAt))
         .sort((a, b) => new Date(a.submittedAt || a.gradedAt!).getTime() - new Date(b.submittedAt || b.gradedAt!).getTime());
-      if (subs.length < 4) return null;
-      const mid = Math.floor(subs.length / 2);
-      const avg = (list: typeof subs) => {
-        let e = 0, p = 0;
-        list.forEach(s => {
-          const a = data.assignments.find(a => a.id === s.assignmentId);
-          if (a?.pointsPossible) { e += s.score!; p += a.pointsPossible; }
-        });
-        return p > 0 ? Math.round((e / p) * 100) : null;
-      };
-      const early = avg(subs.slice(0, mid));
-      const recent = avg(subs.slice(mid));
-      if (early === null || recent === null) return null;
-      const shortName = course.name.includes(':') ? course.name.split(':').slice(1).join(':').trim().replace(/^(AP|IB|Honors) /i, '') : course.name;
-      return { course, shortName: shortName.split(' ').slice(0, 2).join(' '), early, recent, delta: recent - early };
+      if (subs.length < 3) return null;
+
+      // Grade at the earliest 1/3 of submissions
+      const earlySlice = subs.slice(0, Math.ceil(subs.length / 3));
+      let e = 0, p = 0;
+      earlySlice.forEach(s => {
+        const a = data.assignments.find(a => a.id === s.assignmentId);
+        if (a?.pointsPossible) { e += s.score!; p += a.pointsPossible; }
+      });
+      const earlyGrade = p > 0 ? Math.round((e / p) * 100) : null;
+      if (earlyGrade === null) return null;
+
+      // Current grade is the authoritative number from Canvas
+      const current = course.currentGrade!;
+      const delta = current - earlyGrade;
+
+      const shortName = course.name.includes(':') ? course.name.split(':').slice(1).join(':').trim().replace(/^(AP|IB|Honors) /i, '').trim() : course.name;
+      return { course, shortName: shortName.split(' ').slice(0, 3).join(' '), early: earlyGrade, recent: current, delta };
     }).filter(Boolean) as { course: Course; shortName: string; early: number; recent: number; delta: number }[];
 
   if (changes.length === 0) {
@@ -495,20 +499,26 @@ function SubmissionPatternsCard({ data }: { data: AnalyticsData }) {
 function PointsLostCard({ data }: { data: AnalyticsData }) {
   const reasons: { reason: string; points: number; course: string }[] = [];
   
-  // Late penalties
+  const getCourseName = (courseId: string) => {
+    const c = data.courses.find(x => x.id === courseId);
+    if (!c) return courseId;
+    const n = c.name || '';
+    const after = n.includes(':') ? n.split(':').slice(1).join(':').trim() : n;
+    return after.replace(/^(AP|IB|Honors|Accelerated) /i, '').trim().split(' ').slice(0, 3).join(' ');
+  };
+
+  // Late submissions — compare actual vs possible
   data.submissions
     .filter(s => s.late && s.score !== null)
     .forEach(s => {
       const assignment = data.assignments.find(a => a.id === s.assignmentId);
-      if (assignment) {
-        const expectedScore = assignment.pointsPossible * 0.9; // Assume 90% without penalty
-        const lost = Math.max(0, expectedScore - s.score!);
+      if (!assignment) return;
+      const pct = s.score! / assignment.pointsPossible;
+      // Only flag if scored under 70% AND late — likely a late penalty
+      if (pct < 0.7 && assignment.pointsPossible > 0) {
+        const lost = Math.round(assignment.pointsPossible * 0.9 - s.score!);
         if (lost > 0) {
-          reasons.push({
-            reason: 'Late Penalty',
-            points: Math.round(lost),
-            course: assignment.courseCode,
-          });
+          reasons.push({ reason: 'Late submission', points: lost, course: getCourseName(assignment.courseId) });
         }
       }
     });
@@ -519,11 +529,22 @@ function PointsLostCard({ data }: { data: AnalyticsData }) {
     .forEach(s => {
       const assignment = data.assignments.find(a => a.id === s.assignmentId);
       if (assignment) {
-        reasons.push({
-          reason: 'Missing',
-          points: assignment.pointsPossible,
-          course: assignment.courseCode,
-        });
+        reasons.push({ reason: 'Missing: ' + assignment.name.slice(0, 25), points: assignment.pointsPossible, course: getCourseName(assignment.courseId) });
+      }
+    });
+
+  // Low-scoring assignments (below 60%)
+  data.submissions
+    .filter(s => s.score !== null && !s.missing && !s.late)
+    .forEach(s => {
+      const assignment = data.assignments.find(a => a.id === s.assignmentId);
+      if (!assignment || !assignment.pointsPossible) return;
+      const pct = s.score! / assignment.pointsPossible;
+      if (pct < 0.6) {
+        const lost = Math.round(assignment.pointsPossible - s.score!);
+        if (lost >= 3) {
+          reasons.push({ reason: assignment.name.slice(0, 30), points: lost, course: getCourseName(assignment.courseId) });
+        }
       }
     });
 

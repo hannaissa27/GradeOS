@@ -204,7 +204,7 @@ export function PlanTab({
       {/* Grade Trajectory */}
       <SemesterArc assignments={assignments} submissions={submissions} isLoading={isLoading} />
 
-      {/* Grade Rescue */}
+      {/* Grade Planner */}
       <GradeRescue
         currentGrade={selectedCourse.currentGrade ?? null}
         assignments={assignments}
@@ -364,11 +364,6 @@ function FirstMoveButton({ assignment }: { assignment: Assignment }) {
     if (open && result) { setOpen(false); return; }
     setOpen(true);
     if (result || loading) return;
-
-    if (!hasAIKey()) {
-      setError('Add your Anthropic API key in Settings to use this feature.');
-      return;
-    }
 
     setLoading(true);
     try {

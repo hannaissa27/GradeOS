@@ -25,6 +25,7 @@ type ViewMode = 'queue' | 'starred' | 'trash';
 
 export function PriorityStack({ assignments, submissions, courses = [], isLoading, effortOverrides: externalOverrides, onEffortChange: externalOnEffortChange }: PriorityStackProps) {
   const [sortMode, setSortMode] = useState<SortMode>('roi');
+  const [showTop3, setShowTop3] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('queue');
   const [localEffortOverrides, setLocalEffortOverrides] = useState<Map<string, number>>(new Map());
   // Use external overrides if provided (shared with CrunchForecast), else use local
@@ -134,7 +135,7 @@ export function PriorityStack({ assignments, submissions, courses = [], isLoadin
     return (
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-sm">Priority Queue</h3>
+          <h3 className="font-semibold text-sm">Assignments</h3>
         </div>
         <div className="space-y-2">
           {[...Array(4)].map((_, i) => <AssignmentCardSkeleton key={i} />)}
@@ -154,39 +155,40 @@ export function PriorityStack({ assignments, submissions, courses = [], isLoadin
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
-          <h3 className="font-semibold text-sm">Priority Queue</h3>
+          <h3 className="font-semibold text-sm">Assignments</h3>
           <HelpTip text="Your pending assignments sorted by priority. ROI sort puts the highest-value assignments (most grade impact per hour of effort) at the top so you work on what matters most first. Urgency sort puts soonest-due assignments first. Expand any card to set effort estimate or simulate your grade." />
         </div>
-        <TooltipProvider>
-          <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
+          <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant={sortMode === 'roi' ? 'secondary' : 'ghost'}
-                  size="sm"
-                  onClick={() => setSortMode('roi')}
-                  className="h-7 px-2"
-                >
-                  <TrendingUp className="h-3 w-3 mr-1" />Best bang for buck
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent><p>Puts the assignment that gives you the most grade points per hour of effort at the top</p></TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={sortMode === 'urgency' ? 'secondary' : 'ghost'}
-                  size="sm"
-                  onClick={() => setSortMode('urgency')}
-                  className="h-7 px-2"
-                >
+                <Button variant={sortMode === 'urgency' && !showTop3 ? 'secondary' : 'ghost'} size="sm"
+                  onClick={() => { setSortMode('urgency'); setShowTop3(false); }} className="h-7 px-2 text-xs">
                   <Clock className="h-3 w-3 mr-1" />Due soonest
                 </Button>
               </TooltipTrigger>
               <TooltipContent><p>Sort by due date</p></TooltipContent>
             </Tooltip>
-          </div>
-        </TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant={sortMode === 'roi' && !showTop3 ? 'secondary' : 'ghost'} size="sm"
+                  onClick={() => { setSortMode('roi'); setShowTop3(false); }} className="h-7 px-2 text-xs">
+                  <TrendingUp className="h-3 w-3 mr-1" />High value
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent><p>Assignments that give the most grade impact per hour of effort</p></TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant={showTop3 ? 'secondary' : 'ghost'} size="sm"
+                  onClick={() => setShowTop3(v => !v)} className="h-7 px-2 text-xs">
+                  Top 3
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent><p>Shows your 3 most urgent assignments — set effort estimates on each card to unlock High value sort</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
       </div>
 
       {/* View mode tabs */}
@@ -221,7 +223,34 @@ export function PriorityStack({ assignments, submissions, courses = [], isLoadin
       )}
 
       {/* Cards */}
-      {visibleAssignments.length === 0 ? (
+      {showTop3 ? (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Your 3 most urgent assignments right now:</p>
+          {sortedAssignments.filter(a => !trashedIds.has(a.id)).slice(0, 3).map(a => {
+            const hasEffort = effortOverrides.has(a.id);
+            return (
+              <div key={a.id} className="flex items-center justify-between px-3 py-2.5 rounded-lg border border-border bg-card">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{a.name}</p>
+                  <p className="text-xs text-muted-foreground">{a.courseCode} · {a.dueDate ? new Date(a.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'No date'}</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                  {!hasEffort && (
+                    <span className="text-[10px] text-amber-500">Set effort to rank</span>
+                  )}
+                  <span className="text-xs font-medium">{a.pointsPossible}pts</span>
+                </div>
+              </div>
+            );
+          })}
+          {!sortedAssignments.some(a => effortOverrides.has(a.id)) && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-lg px-3 py-2">
+              High value sorting requires effort estimates. Expand any assignment and set how long it will take.
+            </p>
+          )}
+          <button onClick={() => setShowTop3(false)} className="text-xs text-muted-foreground underline cursor-pointer">Show all assignments</button>
+        </div>
+      ) : visibleAssignments.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-10 text-center space-y-1.5">
           {viewMode === 'queue' ? (
             <>

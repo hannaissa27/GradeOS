@@ -310,12 +310,15 @@ export default function TodosPage() {
     const todo = todos.find(t => t.id === id);
     if (!todo) return;
 
-    // Optimistic update
+    const nowCompleted = !todo.completed;
+    // Close detail panel when marking as complete
+    if (nowCompleted && selectedId === id) setSelectedId(null);
+
     setTodos(prev => prev.map(t => 
-      t.id === id ? { ...t, completed: !t.completed } : t
+      t.id === id ? { ...t, completed: nowCompleted } : t
     ));
 
-    await updateTodo(id, { completed: !todo.completed });
+    await updateTodo(id, { completed: nowCompleted });
   };
 
   const handleDelete = async (id: string) => {

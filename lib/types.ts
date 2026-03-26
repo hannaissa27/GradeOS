@@ -34,6 +34,7 @@ export interface Assignment {
   published: boolean;
   assignmentGroupId?: string | null;
   assignmentGroupWeight?: number;
+  assignmentGroupName?: string;
   // Embedded submission data
   submissionScore?: number | null;
   submissionState?: string;
