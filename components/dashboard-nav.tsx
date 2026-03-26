@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import {
   Sun, Moon, RefreshCw, CheckCircle2, Eye, EyeOff, CheckSquare,
   Settings, LogOut, ExternalLink,
-  AlertCircle,
+  AlertCircle, Check,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
