@@ -152,7 +152,7 @@ Return ONLY the JSON. No markdown, no explanation.`,
     : rawName;
 
   return (
-    <Card className={`overflow-hidden ${isStarred ? 'ring-1 ring-yellow-400/50' : ''}`}>
+    <Card className="overflow-hidden">
       <CardContent className="px-3 py-2">
         {/* Top row */}
         <div className="flex items-start gap-2">
