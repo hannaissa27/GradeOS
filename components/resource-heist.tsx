@@ -53,7 +53,8 @@ export function ResourceHeist({ course, connection }: ResourceHeistProps) {
       setFiles(data);
       setLoaded(true);
     } catch {
-      setError('Failed to load files. Check your Canvas token permissions.');
+      // 406 = Canvas token doesn't have file permissions - show helpful message
+      setError('Files unavailable — your Canvas token may not have file access permissions.');
     } finally {
       setIsLoading(false);
     }

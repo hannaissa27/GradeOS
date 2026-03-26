@@ -139,6 +139,9 @@ export async function fetchCourses(connection: CanvasConnection): Promise<Course
     return courses
       .filter((course) => course.id != null)
       .filter((course) => {
+        // Filter out advisory/homeroom/non-academic courses
+        const name = (course.name || '').toLowerCase();
+        if (/advisory|school meeting|homeroom|counseling|lunch|study hall/.test(name)) return false;
         // If the course has term info, only include it if the term hasn't ended
         if (course.term?.end_at) {
           return new Date(course.term.end_at) >= today;

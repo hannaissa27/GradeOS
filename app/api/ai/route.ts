@@ -8,21 +8,19 @@ export async function POST(request: NextRequest) {
     const { prompt, system, maxTokens } = body;
     if (!prompt) return NextResponse.json({ error: 'No prompt provided' }, { status: 400 });
 
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
-      console.error('[AI] OPENAI_API_KEY not set');
       return NextResponse.json({ error: 'AI not configured' }, { status: 503 });
     }
 
-    // Use Vercel AI Gateway with gpt-4.1-nano
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4.1-nano',
+        model: 'llama-3.1-8b-instant',
         max_tokens: Math.min(maxTokens || 800, 1024),
         messages: [
           ...(system ? [{ role: 'system', content: String(system) }] : []),
@@ -35,7 +33,7 @@ export async function POST(request: NextRequest) {
 
     if (!res.ok) {
       const errMsg = data?.error?.message || `Error ${res.status}`;
-      console.error('[AI] Failed:', res.status, errMsg);
+      console.error('[AI] Groq failed:', res.status, errMsg);
       return NextResponse.json({ error: errMsg }, { status: 400 });
     }
 
