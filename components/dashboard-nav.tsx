@@ -69,7 +69,7 @@ function SettingsPanel() {
                   </div>
                   <div>
                     <p className="font-medium text-sm">{connection.userName}</p>
-                    <p className="text-xs text-muted-foreground truncate max-w-[220px]">{connection.canvasUrl ? new URL(connection.canvasUrl).hostname : 'Demo mode'}</p>
+                    <p className="text-xs text-muted-foreground truncate max-w-[220px]">{(() => { try { return connection.canvasUrl ? new URL(connection.canvasUrl).hostname : 'Demo mode'; } catch { return connection.canvasUrl || 'Demo mode'; } })()}</p>
                   </div>
                   <div className="ml-auto flex items-center gap-1 text-xs text-green-500">
                     <CheckCircle2 className="w-3.5 h-3.5" />

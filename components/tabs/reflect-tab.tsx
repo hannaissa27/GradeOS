@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp, AlertTriangle, Clock, Target, Zap } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { ProcrastinationDetector } from '@/components/procrastination-detector';
 import { 
   getGradeColor, 
   gradeToLetter, 
@@ -75,6 +76,12 @@ export function ReflectTab({ courses, assignments, submissions, isLoading }: Ref
           <MomentumCard data={data} />
         </div>
       </section>
+
+      {/* Procrastination Detector */}
+      <ProcrastinationDetector
+        assignments={assignments}
+        submissions={submissions}
+      />
 
       <section>
         <div className="flex items-center gap-2 mb-4">

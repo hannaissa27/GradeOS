@@ -14,11 +14,22 @@ interface PriorityStackProps {
   submissions: Submission[];
   courses?: Course[];
   isLoading?: boolean;
+  effortEstimates?: Record<string, number>;
+  dismissedMissing?: Set<string>;
+  onDismissedMissingChange?: () => void;
 }
 
 type SortMode = 'roi' | 'urgency';
 
-export function PriorityStack({ assignments, submissions, courses = [], isLoading }: PriorityStackProps) {
+export function PriorityStack({
+  assignments,
+  submissions,
+  courses = [],
+  isLoading,
+  effortEstimates = {},
+  dismissedMissing = new Set(),
+  onDismissedMissingChange,
+}: PriorityStackProps) {
   const [sortMode, setSortMode] = useState<SortMode>('urgency');
 
   const submissionMap = useMemo(() =>
@@ -40,9 +51,9 @@ export function PriorityStack({ assignments, submissions, courses = [], isLoadin
     const sorted = [...pendingAssignments];
     if (sortMode === 'roi') {
       sorted.sort((a, b) => {
-        const roiA = calculateROI(a.pointsPossible, 60);
-        const roiB = calculateROI(b.pointsPossible, 60);
-        return roiB - roiA;
+        const effortA = effortEstimates[a.id] || 60;
+        const effortB = effortEstimates[b.id] || 60;
+        return calculateROI(b.pointsPossible, effortB) - calculateROI(a.pointsPossible, effortA);
       });
     } else {
       sorted.sort((a, b) => {
@@ -53,7 +64,7 @@ export function PriorityStack({ assignments, submissions, courses = [], isLoadin
       });
     }
     return sorted;
-  }, [pendingAssignments, sortMode]);
+  }, [pendingAssignments, sortMode, effortEstimates]);
 
   const getCourseGrade = (assignment: Assignment): number | null => {
     const course = courses.find(c => c.id === assignment.courseId);
@@ -69,9 +80,7 @@ export function PriorityStack({ assignments, submissions, courses = [], isLoadin
   if (isLoading) {
     return (
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-sm">Assignments</h3>
-        </div>
+        <h3 className="font-semibold text-sm">Assignments</h3>
         <div className="space-y-2">
           {[...Array(4)].map((_, i) => <AssignmentCardSkeleton key={i} />)}
         </div>
@@ -82,11 +91,10 @@ export function PriorityStack({ assignments, submissions, courses = [], isLoadin
   return (
     <TooltipProvider>
       <div className="space-y-3">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <h3 className="font-semibold text-sm">Assignments</h3>
-            <HelpTip text="Your pending assignments sorted by priority. High value puts the biggest grade-impact assignments at the top. Due soonest sorts by deadline." />
+            <HelpTip text="Your pending assignments sorted by priority. High value uses AI-estimated effort to find assignments with the most grade impact per hour. Due soonest sorts by deadline." />
           </div>
           <div className="flex items-center gap-1.5">
             <Tooltip>
@@ -105,12 +113,11 @@ export function PriorityStack({ assignments, submissions, courses = [], isLoadin
                   <TrendingUp className="h-3 w-3 mr-1" />High value
                 </Button>
               </TooltipTrigger>
-              <TooltipContent><p>Assignments with the most grade impact first</p></TooltipContent>
+              <TooltipContent><p>Most grade impact per hour (AI-estimated effort)</p></TooltipContent>
             </Tooltip>
           </div>
         </div>
 
-        {/* Cards */}
         {sortedAssignments.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 text-center space-y-1.5">
             <p className="text-sm font-medium">All caught up</p>
@@ -126,6 +133,9 @@ export function PriorityStack({ assignments, submissions, courses = [], isLoadin
                 allAssignments={getCourseAssignments(assignment)}
                 allSubmissions={getCourseSubmissions(assignment)}
                 currentCourseGrade={getCourseGrade(assignment)}
+                aiEffortMinutes={effortEstimates[assignment.id]}
+                dismissedMissing={dismissedMissing}
+                onDismissedMissingChange={onDismissedMissingChange}
               />
             ))}
           </div>

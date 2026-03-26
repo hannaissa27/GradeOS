@@ -9,6 +9,7 @@ interface LiveGradeCardProps {
   course: Course;
   assignments: Assignment[];
   submissions: Submission[];
+  dismissedMissing?: Set<string>;
   onClick?: () => void;
 }
 
@@ -29,12 +30,12 @@ function getLetterBg(grade: number | null): string {
   return 'bg-red-500/15 text-red-600 dark:text-red-400';
 }
 
-export function LiveGradeCard({ course, assignments, submissions, onClick }: LiveGradeCardProps) {
+export function LiveGradeCard({ course, assignments, submissions, dismissedMissing = new Set(), onClick }: LiveGradeCardProps) {
   const submissionMap = new Map(submissions.map(s => [s.assignmentId, s]));
 
   const missingCount = assignments.filter(a => {
     const sub = submissionMap.get(a.id);
-    return sub?.missing && !sub?.submittedAt;
+    return sub?.missing && !sub?.submittedAt && !dismissedMissing.has(a.id);
   }).length;
 
   const nextDue = assignments

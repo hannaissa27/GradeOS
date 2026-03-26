@@ -1,11 +1,14 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { LiveGradeCard, LiveGradeCardSkeleton } from '@/components/live-grade-card';
 import { PriorityStack } from '@/components/priority-stack';
 import { WeeklyBrief } from '@/components/weekly-brief';
+import { GradeImpactAdvisor } from '@/components/grade-impact-advisor';
+import { CollisionDetector } from '@/components/collision-detector';
 import { AlertCircle } from 'lucide-react';
 import { GradeAutopsy } from '@/components/grade-autopsy';
+import { batchEstimateEffort, getDismissedMissing } from '@/lib/aiUtils';
 import type { Course, Assignment, Submission } from '@/lib/types';
 
 interface ExecuteTabProps {
@@ -31,6 +34,39 @@ export function ExecuteTab({
   getAssignmentsForCourse,
   getSubmissionsForCourse,
 }: ExecuteTabProps) {
+  const [effortEstimates, setEffortEstimates] = useState<Record<string, number>>({});
+  const [dismissedMissing, setDismissedMissing] = useState<Set<string>>(new Set());
+
+  const submissionMap = useMemo(() =>
+    new Map(allSubmissions.map(s => [s.assignmentId, s])),
+    [allSubmissions]
+  );
+
+  // Load dismissed missing on mount
+  useEffect(() => {
+    setDismissedMissing(getDismissedMissing());
+  }, []);
+
+  // Batch estimate effort for all pending assignments — ONE AI call
+  useEffect(() => {
+    if (allAssignments.length === 0) return;
+
+    const pending = allAssignments.filter(a => {
+      const sub = submissionMap.get(a.id);
+      return !sub?.submittedAt && (sub?.score === null || sub?.score === undefined) && !sub?.excused;
+    });
+
+    if (pending.length === 0) return;
+
+    batchEstimateEffort(pending)
+      .then(setEffortEstimates)
+      .catch(() => {});
+  }, [allAssignments, submissionMap]);
+
+  // Callback for when missing is dismissed in a child
+  const handleDismissMissingChange = () => {
+    setDismissedMissing(getDismissedMissing());
+  };
 
   if (error) {
     return (
@@ -70,6 +106,17 @@ export function ExecuteTab({
         />
       )}
 
+      {/* Due Date Collisions */}
+      {!isLoading && Object.keys(effortEstimates).length > 0 && (
+        <CollisionDetector
+          courses={courses}
+          allAssignments={allAssignments}
+          allSubmissions={allSubmissions}
+          effortEstimates={effortEstimates}
+          dismissedMissing={dismissedMissing}
+        />
+      )}
+
       {/* Grade cards */}
       <div>
         <p className="text-xs text-muted-foreground mb-2 font-medium uppercase tracking-wide">Your grades right now — click any course for details</p>
@@ -82,13 +129,14 @@ export function ExecuteTab({
                   course={course}
                   assignments={getAssignmentsForCourse(course.id)}
                   submissions={getSubmissionsForCourse(course.id)}
+                  dismissedMissing={dismissedMissing}
                   onClick={() => onSelectCourse?.(course.id)}
                 />
               ))}
         </div>
       </div>
 
-      {/* Grade Autopsy — auto-detected bombed assignments */}
+      {/* Grade Autopsy */}
       {!isLoading && (
         <GradeAutopsy
           courses={courses}
@@ -97,12 +145,26 @@ export function ExecuteTab({
         />
       )}
 
-      {/* Assignments — sorted by priority */}
+      {/* Grade Impact Advisor — cross-course optimization */}
+      {!isLoading && Object.keys(effortEstimates).length > 0 && (
+        <GradeImpactAdvisor
+          courses={courses}
+          allAssignments={allAssignments}
+          allSubmissions={allSubmissions}
+          effortEstimates={effortEstimates}
+          dismissedMissing={dismissedMissing}
+        />
+      )}
+
+      {/* Assignments — sorted by priority, uses AI effort estimates */}
       <PriorityStack
         assignments={allAssignments}
         submissions={allSubmissions}
         courses={courses}
         isLoading={isLoading}
+        effortEstimates={effortEstimates}
+        dismissedMissing={dismissedMissing}
+        onDismissedMissingChange={handleDismissMissingChange}
       />
     </div>
   );

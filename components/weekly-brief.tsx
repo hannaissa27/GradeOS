@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Loader2, Sparkles, RefreshCw } from 'lucide-react';
-import { callClaude } from '@/lib/aiUtils';
+import { callClaude, getDismissedMissing } from '@/lib/aiUtils';
 import { getGradeColor, gradeToLetter, formatDueDate } from '@/lib/gradeUtils';
 import type { Course, Assignment, Submission } from '@/lib/types';
 
@@ -38,9 +38,10 @@ export function WeeklyBrief({ courses, allAssignments, allSubmissions }: WeeklyB
       })
       .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime());
 
+    const dismissed = getDismissedMissing();
     const missing = allAssignments.filter(a => {
       const sub = submissionMap.get(a.id);
-      return sub?.missing && !sub?.excused;
+      return sub?.missing && !sub?.excused && !dismissed.has(a.id);
     });
 
     const courseGrades = courses

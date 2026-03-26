@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { GradeRescue } from '@/components/grade-rescue';
+import { PatternAnalyzer } from '@/components/pattern-analyzer';
+import { PostGradeDebrief } from '@/components/post-grade-debrief';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -14,7 +16,7 @@ import {
   formatDueDate,
   getDueDateColor,
 } from '@/lib/gradeUtils';
-import { callClaude } from '@/lib/aiUtils';
+import { callClaude, getDismissedMissing, dismissMissing as dismissMissingFn } from '@/lib/aiUtils';
 import type { Course, Assignment, Submission } from '@/lib/types';
 
 interface PlanTabProps {
@@ -41,6 +43,11 @@ export function PlanTab({
   getSubmissionsForCourse,
 }: PlanTabProps) {
   const [completedOpen, setCompletedOpen] = useState(false);
+  const [dismissedMissing, setDismissedMissing] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setDismissedMissing(getDismissedMissing());
+  }, []);
 
   const selectedCourse = selectedCourseId ? courses.find(c => c.id === selectedCourseId) ?? null : null;
   const assignments = selectedCourseId ? getAssignmentsForCourse(selectedCourseId) : [];
@@ -51,8 +58,8 @@ export function PlanTab({
   const missingAssignments = useMemo(() =>
     assignments.filter(a => {
       const sub = submissions.find(s => s.assignmentId === a.id);
-      return sub?.missing && !sub?.excused;
-    }), [assignments, submissions]);
+      return sub?.missing && !sub?.excused && !dismissedMissing.has(a.id);
+    }), [assignments, submissions, dismissedMissing]);
 
   const upcomingAssignments = useMemo(() =>
     assignments.filter(a => {
@@ -191,17 +198,41 @@ export function PlanTab({
           {missingAssignments.map(a => (
             <div key={a.id} className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground truncate flex-1">{a.name}</span>
-              <span className="text-muted-foreground ml-2 flex-shrink-0">{a.pointsPossible} pts · {formatDueDate(a.dueDate)}</span>
+              <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+                <span className="text-muted-foreground">{a.pointsPossible} pts</span>
+                <button
+                  onClick={() => { dismissMissingFn(a.id); setDismissedMissing(getDismissedMissing()); }}
+                  className="text-xs text-muted-foreground hover:text-foreground underline cursor-pointer"
+                >
+                  Mark done
+                </button>
+              </div>
             </div>
           ))}
         </div>
       )}
+
+      {/* Post-Grade Debrief — recently returned grades */}
+      <PostGradeDebrief
+        course={selectedCourse}
+        assignments={assignments}
+        submissions={submissions}
+      />
 
       {/* Grade Planner */}
       <GradeRescue
         currentGrade={selectedCourse.currentGrade ?? null}
         assignments={assignments}
         submissions={submissions}
+      />
+
+      {/* Pattern Analyzer — course-level strategic insight */}
+      <PatternAnalyzer
+        courseName={selectedCourse.name}
+        assignments={assignments}
+        submissions={submissions}
+        currentGrade={selectedCourse.currentGrade ?? null}
+        dismissedMissing={dismissedMissing}
       />
 
       {/* Upcoming Assignments */}
