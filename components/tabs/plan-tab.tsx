@@ -17,7 +17,7 @@ import {
   formatDueDate,
   getDueDateColor,
 } from '@/lib/gradeUtils';
-import { hasAIKey, callClaude } from '@/lib/aiUtils';
+import { callClaude } from '@/lib/aiUtils';
 import type { Course, Assignment, Submission } from '@/lib/types';
 
 interface PlanTabProps {
@@ -389,7 +389,7 @@ function FirstMoveButton({ assignment }: { assignment: Assignment }) {
       else throw new Error('Bad response');
     } catch (err: any) {
       const msg = err?.message || '';
-      setError(msg === 'NO_API_KEY' ? 'Add your API key in Settings.' : 'Could not generate. Try again.');
+      setError('Could not generate. Try again.');
     } finally {
       setLoading(false);
     }

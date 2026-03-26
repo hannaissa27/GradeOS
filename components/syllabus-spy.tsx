@@ -59,35 +59,27 @@ function parseDate(text: string): ExtractedDate[] {
 }
 
 async function extractWithAI(text: string): Promise<ExtractedDate[]> {
-  const key = localStorage.getItem('gradeos-ai-key');
-  if (!key) throw new Error('No API key');
-
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('/api/ai', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1000,
-      messages: [{
-        role: 'user',
-        content: `Extract all important dates from this syllabus. Return ONLY a JSON array with objects: {date: string, description: string, type: "exam"|"assignment"|"holiday"|"other"}. No extra text.\n\nSyllabus:\n${text.slice(0, 4000)}`,
-      }],
+      prompt: `Extract all dates and associated events/deadlines from this syllabus text. Return ONLY a JSON array, no other text: [{"date":"YYYY-MM-DD","event":"description"}]\n\n${text.slice(0, 4000)}`,
+      system: 'You are a date extraction assistant. Return ONLY valid JSON array.',
+      maxTokens: 1000,
     }),
   });
 
+  if (!res.ok) throw new Error('AI request failed');
   const data = await res.json();
-  const content = data.content?.[0]?.text || '[]';
+  const text2 = data.text || '';
+  
   try {
-    const clean = content.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
-  } catch {
-    return [];
-  }
+    const parsed = JSON.parse(text2.replace(/```json|```/g, '').trim());
+    if (Array.isArray(parsed)) {
+      return parsed.filter((item: any) => item.date && item.event);
+    }
+  } catch {}
+  return [];
 }
 
 export function SyllabusSpy() {

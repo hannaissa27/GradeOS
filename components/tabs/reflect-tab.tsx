@@ -191,7 +191,7 @@ function GradeChangeCard({ data }: { data: AnalyticsData }) {
 
       // Current grade is the authoritative number from Canvas
       const current = course.currentGrade!;
-      const delta = current - earlyGrade;
+      const delta = Math.round((current - earlyGrade) * 10) / 10;
 
       const shortName = course.name.includes(':') ? course.name.split(':').slice(1).join(':').trim().replace(/^(AP|IB|Honors) /i, '').trim() : course.name;
       return { course, shortName: shortName.split(' ').slice(0, 3).join(' '), early: earlyGrade, recent: current, delta };
@@ -221,11 +221,11 @@ function GradeChangeCard({ data }: { data: AnalyticsData }) {
             <div key={c.course.id} className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground truncate flex-1 mr-2">{c.shortName}</span>
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                <span>{c.early}%</span>
+                <span>{Math.round(c.early)}%</span>
                 <span className="text-muted-foreground">→</span>
-                <span>{c.recent}%</span>
+                <span>{Math.round(c.recent * 10) / 10}%</span>
                 <span className={`font-bold ${c.delta > 1 ? 'text-green-500' : c.delta < -1 ? 'text-red-500' : 'text-muted-foreground'}`}>
-                  ({c.delta > 0 ? '+' : ''}{c.delta}%)
+                  ({c.delta > 0 ? '+' : ''}{Math.round(c.delta * 10) / 10}%)
                 </span>
               </div>
             </div>

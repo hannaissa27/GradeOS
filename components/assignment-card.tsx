@@ -13,7 +13,7 @@ import {
   getGradeColor,
 } from '@/lib/gradeUtils';
 import { getEffortOverride, setEffortOverride } from '@/lib/db-queries';
-import { callClaude, hasAIKey } from '@/lib/aiUtils';
+import { callClaude } from '@/lib/aiUtils';
 import type { Assignment, Submission } from '@/lib/types';
 
 interface FirstMoveResult {
@@ -73,12 +73,6 @@ export function AssignmentCard({
       return;
     }
 
-    if (!hasAIKey()) {
-      setFirstMoveError('Add your Anthropic API key in Settings to use First Move.');
-      setIsExpanded(true);
-      return;
-    }
-
     setFirstMoveLoading(true);
     setFirstMoveError(null);
     setIsExpanded(true);
@@ -115,11 +109,11 @@ Return ONLY the JSON object. No explanation, no markdown, no extra text.`,
     } catch (err: any) {
       const msg = err?.message || '';
       if (msg === 'NO_API_KEY') {
-        setFirstMoveError('No API key set. Go to Settings and add your Anthropic key.');
+        setFirstMoveError('Could not generate. Try again.');
       } else if (msg === 'INVALID_API_KEY') {
-        setFirstMoveError('Invalid API key. Check your key in Settings.');
+        setFirstMoveError('Could not generate. Try again.');
       } else {
-        setFirstMoveError('Could not generate. Check your API key in Settings.');
+        setFirstMoveError('Could not generate. Try again.');
       }
     } finally {
       setFirstMoveLoading(false);

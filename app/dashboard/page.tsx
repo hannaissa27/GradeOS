@@ -132,11 +132,13 @@ function DashboardContent() {
     }
   }, []); // empty deps - only run once on mount
 
-  // Also reload when connection changes (user connects/disconnects)
+  // Reload when user first connects (not on every remount)
+  const prevConnected = React.useRef(false);
   useEffect(() => {
-    if (connection.connected) {
+    if (connection.connected && !prevConnected.current && !hasLoadedOnce) {
       loadData();
     }
+    prevConnected.current = connection.connected;
   }, [connection.connected]); // eslint-disable-line
 
   // Auto-dismiss error after 8 seconds

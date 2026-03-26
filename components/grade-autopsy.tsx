@@ -92,13 +92,13 @@ export function GradeAutopsy({ courses, allAssignments, allSubmissions }: GradeA
         if (dismissed.has(sub.assignmentId)) continue;
         const asgn = courseAssignments.find(a => a.id === sub.assignmentId);
         if (!asgn || !asgn.pointsPossible) continue;
-        if (!sub.score === null) continue;
+        if (sub.score === null || sub.score === undefined) continue;
 
         const pct = (sub.score! / asgn.pointsPossible) * 100;
         const gap = coursePct - pct;
 
         // Flag if 15+ percentage points below their own course average AND below 75%
-        if (gap >= 15 && pct < 75) {
+        if (gap >= 10 && pct < 80) {
           candidates.push({ assignment: asgn, submission: sub, course, pct, coursePct });
         }
       }
@@ -135,7 +135,7 @@ export function GradeAutopsy({ courses, allAssignments, allSubmissions }: GradeA
     if (!hasAIKey()) {
       setSession(assignmentId, {
         step: 'result',
-        error: 'Add your Anthropic API key in Settings to get your diagnosis.',
+        error: 'Analysis failed. Please try again.',
       });
       return;
     }
@@ -208,10 +208,10 @@ export function GradeAutopsy({ courses, allAssignments, allSubmissions }: GradeA
       setSession(assignmentId, {
         step: 'result',
         error: msg === 'NO_API_KEY'
-          ? 'No API key set. Go to Settings to add your Anthropic key.'
+          ? 'Could not generate. Try again.'
           : msg === 'INVALID_API_KEY'
           ? 'Invalid API key. Check your key in Settings.'
-          : 'Analysis failed — check your API key in Settings and try again.',
+          : 'Analysis failed. Try again.',
       });
     }
   };

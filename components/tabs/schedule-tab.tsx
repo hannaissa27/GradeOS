@@ -34,6 +34,7 @@ export function ScheduleTab({
   const [blocksLoading, setBlocksLoading] = useState(true);
   const [draggedAssignment, setDraggedAssignment] = useState<Assignment | null>(null);
   const [dropError, setDropError] = useState<string | null>(null);
+  const [draggedTodo, setDraggedTodo] = useState<Todo | null>(null);
   const [hiddenAssignmentIds, setHiddenAssignmentIds] = useState<Set<string>>(new Set());
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
   useEffect(() => {
@@ -108,6 +109,27 @@ export function ScheduleTab({
 
 
   const handleDrop = async (dayIndex: number, hour: number) => {
+    if (!draggedAssignment && !draggedTodo) return;
+    
+    // Handle todo drop
+    if (draggedTodo && !draggedAssignment) {
+      const startTime = new Date(weekDates[dayIndex]);
+      startTime.setHours(hour, 0, 0, 0);
+      const durationMins = draggedTodo.durationMinutes || 60;
+      const endTime = new Date(startTime.getTime() + durationMins * 60 * 1000);
+      const localBlock: TimeBlock = {
+        id: `local-todo-${Date.now()}`,
+        assignmentId: draggedTodo.id,
+        courseId: 'todo',
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        createdAt: new Date().toISOString(),
+      };
+      setTimeBlocks(prev => [...prev, localBlock]);
+      setDraggedTodo(null);
+      return;
+    }
+    
     if (!draggedAssignment) return;
     const startTime = new Date(weekDates[dayIndex]);
     startTime.setHours(hour, 0, 0, 0);
@@ -262,18 +284,26 @@ export function ScheduleTab({
           </div>
         </div>
 
-        {/* Todos section */}
-        {todos.length > 0 && (
+        {/* Todos section — draggable onto calendar */}
+        {todos.filter(t => !t.completed).length > 0 && (
           <div>
             <h3 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">My Todos</h3>
             <div className="space-y-1.5">
               {todos.filter(t => !t.completed).map(t => (
-                <div key={t.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md hover:bg-accent/50 transition-colors">
+                <div
+                  key={t.id}
+                  draggable
+                  onDragStart={() => setDraggedTodo(t)}
+                  onDragEnd={() => setDraggedTodo(null)}
+                  className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md hover:bg-accent/50 transition-colors cursor-grab active:cursor-grabbing border border-dashed border-border"
+                >
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-primary/60" />
+                    <GripVertical className="w-3 h-3 text-muted-foreground flex-shrink-0" />
                     <p className="text-xs truncate">{t.title}</p>
                   </div>
-                  <span className="text-[10px] text-muted-foreground flex-shrink-0">Todo</span>
+                  <span className="text-[10px] text-muted-foreground flex-shrink-0">
+                    {t.durationMinutes ? `${t.durationMinutes}m` : 'Todo'}
+                  </span>
                 </div>
               ))}
             </div>
@@ -337,12 +367,24 @@ export function ScheduleTab({
                 return (
                   <div
                     key={`${dayIndex}-${hour}`}
-                    className={`border-r border-b border-border relative transition-colors ${isToday ? 'bg-primary/5' : ''} ${draggedAssignment ? 'hover:bg-accent/40 cursor-copy' : ''}`}
+                    className={`border-r border-b border-border relative transition-colors ${isToday ? 'bg-primary/5' : ''} ${(draggedAssignment || draggedTodo) ? 'hover:bg-accent/40 cursor-copy' : ''}`}
                     style={{ height: CELL_HEIGHT }}
                     onDragOver={e => e.preventDefault()}
                     onDrop={() => handleDrop(dayIndex, hour)}
                   >
                     {blocks.map(block => {
+                      // Handle todo blocks
+                      if (block.courseId === 'todo') {
+                        const todo = todos.find(t => t.id === block.assignmentId);
+                        const label = todo?.title || 'Todo';
+                        return (
+                          <div key={block.id} onClick={() => handleDeleteBlock(block.id)}
+                            className="absolute inset-x-0.5 rounded text-[9px] text-white px-1 py-0.5 cursor-pointer hover:opacity-80 overflow-hidden bg-purple-500"
+                            style={{ top: 2, minHeight: 20 }} title={`${label} — click to remove`}>
+                            {label}
+                          </div>
+                        );
+                      }
                       const assignment = allAssignments.find(a => a.id === block.assignmentId);
                       if (!assignment) return null;
                       const startTime = new Date(block.startTime);
