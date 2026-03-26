@@ -1,20 +1,17 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { LiveGradeCard, LiveGradeCardSkeleton } from '@/components/live-grade-card';
 import { PriorityStack } from '@/components/priority-stack';
-import { CrunchForecast } from '@/components/crunch-forecast';
-import { AlertCircle, ChevronDown } from 'lucide-react';
-import { HelpTip } from '@/components/help-tip';
-import { getAllEffortOverrides } from '@/lib/db-queries';
+import { WeeklyBrief } from '@/components/weekly-brief';
+import { AlertCircle } from 'lucide-react';
 import { GradeAutopsy } from '@/components/grade-autopsy';
-import type { Course, Assignment, Submission, Announcement } from '@/lib/types';
+import type { Course, Assignment, Submission } from '@/lib/types';
 
 interface ExecuteTabProps {
   courses: Course[];
   allAssignments: Assignment[];
   allSubmissions: Submission[];
-  announcements: Announcement[];
   isLoading: boolean;
   error: string | null;
   onSelectCourse?: (courseId: string) => void;
@@ -34,25 +31,6 @@ export function ExecuteTab({
   getAssignmentsForCourse,
   getSubmissionsForCourse,
 }: ExecuteTabProps) {
-  const [effortOverrides, setEffortOverrides] = useState<Map<string, number>>(new Map());
-  const [trashedIds, setTrashedIds] = useState<Set<string>>(new Set());
-  const [crunchOpen, setCrunchOpen] = useState(true);
-
-  useEffect(() => {
-    getAllEffortOverrides().then(setEffortOverrides).catch(() => {});
-    try {
-      const saved = JSON.parse(localStorage.getItem('gradeos-trashed') || '[]');
-      setTrashedIds(new Set(saved));
-    } catch {}
-  }, []);
-
-  const handleEffortSet = (assignmentId: string, minutes: number) => {
-    setEffortOverrides(prev => {
-      const next = new Map(prev);
-      next.set(assignmentId, minutes);
-      return next;
-    });
-  };
 
   if (error) {
     return (
@@ -83,6 +61,15 @@ export function ExecuteTab({
 
   return (
     <div className="space-y-5">
+      {/* AI Weekly Brief */}
+      {!isLoading && (
+        <WeeklyBrief
+          courses={courses}
+          allAssignments={allAssignments}
+          allSubmissions={allSubmissions}
+        />
+      )}
+
       {/* Grade cards */}
       <div>
         <p className="text-xs text-muted-foreground mb-2 font-medium uppercase tracking-wide">Your grades right now — click any course for details</p>
@@ -110,41 +97,12 @@ export function ExecuteTab({
         />
       )}
 
-      {/* Workload Planner — collapsible, open by default */}
-      {!isLoading && (
-        <div className="rounded-lg border border-border">
-          <button
-            onClick={() => setCrunchOpen(v => !v)}
-            className="w-full flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-accent/30 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">Workload Planner</span>
-              <HelpTip text="Shows you the next 14 days as columns. Each assignment sits in the day it's due, sized by how long it takes. When a day has more work than your daily capacity, it turns red — that's a crunch day. Use the suggestions to spread work earlier and avoid last-minute panic." />
-            </div>
-            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${crunchOpen ? 'rotate-180' : ''}`} />
-          </button>
-          {crunchOpen && (
-            <div className="px-4 pb-4">
-              <CrunchForecast
-                assignments={allAssignments}
-                submissions={allSubmissions}
-                effortOverrides={effortOverrides}
-                trashedIds={trashedIds}
-                onEffortSet={handleEffortSet}
-              />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Priority queue — full width */}
+      {/* Assignments — sorted by priority */}
       <PriorityStack
         assignments={allAssignments}
         submissions={allSubmissions}
         courses={courses}
         isLoading={isLoading}
-        effortOverrides={effortOverrides}
-        onEffortChange={handleEffortSet}
       />
     </div>
   );

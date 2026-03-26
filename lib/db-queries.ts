@@ -4,6 +4,7 @@
 import { createClient } from '@/lib/supabase/client';
 import { getSessionHash } from './session';
 import type { Todo, TimeBlock, EffortOverride } from './types';
+export type { Todo, TimeBlock, EffortOverride };
 
 // ============ Effort Overrides ============
 
@@ -154,7 +155,7 @@ export async function getTodos(): Promise<Todo[]> {
   }));
 }
 
-export async function createTodo(todo: Omit<Todo, 'id' | 'createdAt'>): Promise<Todo> {
+export async function createTodo(todo: Partial<Omit<Todo, 'id' | 'createdAt'>> & { title: string }): Promise<Todo> {
   const supabase = createClient();
   const sessionHash = getSessionHash();
   
@@ -163,13 +164,13 @@ export async function createTodo(todo: Omit<Todo, 'id' | 'createdAt'>): Promise<
     .insert({
       session_hash: sessionHash,
       title: todo.title,
-      notes: todo.notes,
-      due_date: todo.dueDate,
-      priority: todo.priority,
-      completed: todo.completed,
-      sort_order: todo.sortOrder,
-      course_tag: todo.courseTag,
-      duration_minutes: todo.durationMinutes,
+      notes: todo.notes ?? '',
+      due_date: todo.dueDate ?? null,
+      priority: todo.priority ?? 'medium',
+      completed: todo.completed ?? false,
+      sort_order: todo.sortOrder ?? 0,
+      course_tag: todo.courseTag ?? '',
+      duration_minutes: todo.durationMinutes ?? null,
     })
     .select()
     .single();
@@ -226,25 +227,27 @@ export async function deleteTodo(id: string): Promise<void> {
   if (error) throw error;
 }
 
-export async function reorderTodos(todoIds: string[]): Promise<void> {
+export async function reorderTodos(items: { id: string; sortOrder: number }[] | string[]): Promise<void> {
   const supabase = createClient();
   const sessionHash = getSessionHash();
   
-  // Update sort_order for each todo
-  const updates = todoIds.map((id, index) => 
-    supabase
+  // Support both formats: array of {id, sortOrder} objects or plain string[] of ids
+  const updates = items.map((item, index) => {
+    const id = typeof item === 'string' ? item : item.id;
+    const order = typeof item === 'string' ? index : item.sortOrder;
+    return supabase
       .from('todos')
-      .update({ sort_order: index })
+      .update({ sort_order: order })
       .eq('id', id)
-      .eq('session_hash', sessionHash)
-  );
+      .eq('session_hash', sessionHash);
+  });
   
   await Promise.all(updates);
 }
 
-// ============ Study Pulse Reactions ============
+// ============ Pulse Reactions ============
 
-export async function getStudyPulseReaction(assignmentId: string): Promise<string | null> {
+export async function getPulseReaction(assignmentId: string): Promise<string | null> {
   const supabase = createClient();
   const sessionHash = getSessionHash();
   
@@ -259,7 +262,7 @@ export async function getStudyPulseReaction(assignmentId: string): Promise<strin
   return data.reaction;
 }
 
-export async function setStudyPulseReaction(assignmentId: string, reaction: 'confused' | 'got_it' | 'stressed'): Promise<void> {
+export async function setPulseReaction(assignmentId: string, reaction: 'confused' | 'got_it' | 'stressed'): Promise<void> {
   const supabase = createClient();
   const sessionHash = getSessionHash();
   
@@ -282,7 +285,7 @@ export async function setStudyPulseReaction(assignmentId: string, reaction: 'con
   if (error) throw error;
 }
 
-export async function getStudyPulseStats(assignmentId: string): Promise<{ confused: number; got_it: number; stressed: number }> {
+export async function getPulseStats(assignmentId: string): Promise<{ confused: number; got_it: number; stressed: number }> {
   const supabase = createClient();
   
   const { data, error } = await supabase
@@ -301,6 +304,11 @@ export async function getStudyPulseStats(assignmentId: string): Promise<{ confus
   
   return stats;
 }
+
+// Legacy aliases
+export const getStudyPulseReaction = getPulseReaction;
+export const setStudyPulseReaction = setPulseReaction;
+export const getStudyPulseStats = getPulseStats;
 
 // ============ Downloaded Files ============
 

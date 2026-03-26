@@ -120,7 +120,7 @@ export default function LandingPage() {
           transition={{ ...fadeInUp.transition, delay: 0.1 }}
           className="text-lg text-muted-foreground max-w-3xl leading-relaxed"
         >
-          The intelligence layer on top of Canvas. Priority queues, grade forecasting, AI triage, and deep
+          The intelligence layer on top of Canvas. Grade planning, workload forecasting, AI diagnosis, and deep
           analytics — all from your existing Canvas account.
         </motion.p>
 
@@ -205,33 +205,33 @@ export default function LandingPage() {
             {[
               {
                 icon: Brain,
-                title: 'AI Announcement Triage',
-                description: 'Summaries and action items from professor announcements',
-              },
-              {
-                icon: Ghost,
-                title: 'Syllabus Spy',
-                description: 'Extract hidden deadlines from PDF syllabi',
-              },
-              {
-                icon: Timer,
-                title: 'Time Blocking',
-                description: 'Drag assignments onto a weekly calendar',
-              },
-              {
-                icon: Package,
-                title: 'Resource Heist',
-                description: 'Download all course files as one zip',
+                title: 'Grade Autopsy',
+                description: 'AI diagnoses why you bombed an assignment and tells you how to fix it',
               },
               {
                 icon: Zap,
-                title: 'Semester Arc',
-                description: 'Grade trajectory with projected final',
+                title: 'Assignment Decoder',
+                description: 'AI breaks down what professors actually want — deliverable, hidden requirements, time estimate',
               },
               {
                 icon: Target,
-                title: 'Priority Stack',
-                description: 'Assignments sorted by ROI, not due date',
+                title: 'Weekly Battle Plan',
+                description: 'AI-generated priority plan every week based on your grades and deadlines',
+              },
+              {
+                icon: Ghost,
+                title: 'Grade Planner',
+                description: 'Shows exactly what you need on every remaining assignment to hit your target',
+              },
+              {
+                icon: Package,
+                title: 'Grade Trajectory',
+                description: 'Running grade over time with projected final for every course',
+              },
+              {
+                icon: Timer,
+                title: 'Smart Sorting',
+                description: 'Assignments sorted by grade impact so you work on what moves the needle first',
               },
             ].map((feature, idx) => {
               const Icon = feature.icon;

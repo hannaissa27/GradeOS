@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Star, Trash2, ChevronDown, Clock, AlertTriangle, Zap, Loader2 } from 'lucide-react';
+import { ChevronDown, Clock, AlertTriangle, Zap, Loader2 } from 'lucide-react';
 import {
   courseColor,
   formatDueDate,
@@ -17,9 +17,11 @@ import { callClaude } from '@/lib/aiUtils';
 import type { Assignment, Submission } from '@/lib/types';
 
 interface FirstMoveResult {
-  plain: string;       // one sentence: what this actually is
-  firstStep: string;   // the single first physical action
-  timeEstimate: string; // "About 90 minutes"
+  plain: string;         // what the assignment actually asks for
+  deliverable: string;   // what to hand in
+  hidden: string;        // buried requirements most students miss
+  firstStep: string;     // one concrete action under 2 minutes
+  timeEstimate: string;  // "About 90 minutes"
 }
 
 interface AssignmentCardProps {
@@ -29,10 +31,6 @@ interface AssignmentCardProps {
   allSubmissions?: Submission[];
   currentCourseGrade?: number | null;
   onEffortChange?: (assignmentId: string, minutes: number) => void;
-  onStar?: (assignmentId: string, starred: boolean) => void;
-  onTrash?: (assignmentId: string) => void;
-  starredIds?: Set<string>;
-  trashedIds?: Set<string>;
 }
 
 export function AssignmentCard({
@@ -42,10 +40,6 @@ export function AssignmentCard({
   allSubmissions = [],
   currentCourseGrade,
   onEffortChange,
-  onStar,
-  onTrash,
-  starredIds = new Set(),
-  trashedIds = new Set(),
 }: AssignmentCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [effortMinutes, setEffortMinutes] = useState<number>(60);
@@ -87,33 +81,38 @@ Description: ${assignment.description ? assignment.description.replace(/<[^>]+>/
 
       const response = await callClaude(
         prompt,
-        `You help students beat procrastination by making assignments feel small and concrete.
-Given an assignment, return ONLY valid JSON with exactly these three fields:
+        `You decode assignments so students understand them instantly. Given an assignment, return ONLY valid JSON:
 {
-  "plain": "One sentence in plain English describing what the student actually has to do — no academic jargon, no rubric language. Start with a verb.",
-  "firstStep": "The single most concrete first physical action the student can take RIGHT NOW that takes under 2 minutes. Not a plan. Not step 1 of 10. One tiny action. Examples: 'Open a Google Doc and type your name and the date at the top.' or 'Find your textbook and flip to the chapter listed in the assignment.' or 'Write one sentence answering the main question, even badly.'",
-  "timeEstimate": "A realistic time estimate like 'About 45 minutes' or 'Plan for 2 hours'. Base it on the assignment type and point value."
+  "plain": "One sentence: what the student actually has to do. No jargon. Start with a verb.",
+  "deliverable": "What to hand in. Be specific: '500-word essay as PDF' or 'completed worksheet uploaded as image' or 'online quiz, 20 questions'.",
+  "hidden": "One sentence about requirements students usually miss — formatting, citation style, specific sections to include, word counts buried in the description. If nothing hidden, say 'No hidden requirements — straightforward.'",
+  "firstStep": "One concrete 2-minute action to start RIGHT NOW. Not a plan. One tiny physical action like 'Open a Google Doc and type your name at the top.'",
+  "timeEstimate": "Realistic estimate like 'About 45 minutes' based on assignment type and points."
 }
-Return ONLY the JSON object. No explanation, no markdown, no extra text.`,
-        400
+Return ONLY the JSON. No markdown, no explanation.`,
+        500
       );
 
       const cleaned = response.replace(/```json|```/g, '').trim();
       const parsed = JSON.parse(cleaned);
 
       if (parsed.plain && parsed.firstStep && parsed.timeEstimate) {
-        setFirstMove(parsed as FirstMoveResult);
+        setFirstMove({
+          plain: parsed.plain,
+          deliverable: parsed.deliverable || '',
+          hidden: parsed.hidden || '',
+          firstStep: parsed.firstStep,
+          timeEstimate: parsed.timeEstimate,
+        });
       } else {
         throw new Error('Incomplete response');
       }
     } catch (err: any) {
       const msg = err?.message || '';
-      if (msg === 'NO_API_KEY') {
-        setFirstMoveError('Could not generate. Try again.');
-      } else if (msg === 'INVALID_API_KEY') {
-        setFirstMoveError('Could not generate. Try again.');
+      if (msg.includes('429') || msg.includes('rate')) {
+        setFirstMoveError('AI is rate-limited. Try again in a minute.');
       } else {
-        setFirstMoveError('Could not generate. Try again.');
+        setFirstMoveError('Could not decode. Try again.');
       }
     } finally {
       setFirstMoveLoading(false);
@@ -121,10 +120,7 @@ Return ONLY the JSON object. No explanation, no markdown, no extra text.`,
   };
 
   const dueDateColorClass = getDueDateColor(assignment.dueDate);
-  const isStarred = starredIds.has(assignment.id);
   const isMissing = submission?.missing && !missingDismissed;
-
-  if (trashedIds.has(assignment.id)) return null;
 
   // Grade impact
   const totalPossible = allAssignments.reduce((s, a) => s + (a.pointsPossible || 0), 0);
@@ -210,23 +206,9 @@ Return ONLY the JSON object. No explanation, no markdown, no extra text.`,
                 ? <Loader2 className="h-3 w-3 animate-spin" />
                 : <Zap className="h-3 w-3" />
               }
-              <span className="hidden sm:inline text-xs">How to start</span>
+              <span className="hidden sm:inline text-xs">Decode</span>
             </button>
 
-            <button
-              onClick={() => onStar?.(assignment.id, !isStarred)}
-              className={`p-1 rounded hover:bg-accent transition-colors cursor-pointer ${isStarred ? 'text-yellow-400' : 'text-muted-foreground hover:text-yellow-400'}`}
-              title={isStarred ? 'Unstar' : 'Star'}
-            >
-              <Star className="h-3 w-3" fill={isStarred ? 'currentColor' : 'none'} />
-            </button>
-            <button
-              onClick={() => onTrash?.(assignment.id)}
-              className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-accent transition-colors cursor-pointer"
-              title="Remove from queue"
-            >
-              <Trash2 className="h-3 w-3" />
-            </button>
             <button
               onClick={() => setIsExpanded(v => !v)}
               className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
@@ -240,7 +222,7 @@ Return ONLY the JSON object. No explanation, no markdown, no extra text.`,
         {isExpanded && (
           <div className="mt-2.5 pt-2.5 border-t border-border space-y-3">
 
-            {/* First Move result */}
+            {/* Assignment Decoder result */}
             {(firstMove || firstMoveError) && (
               <div className={`space-y-2.5 rounded-lg p-3 ${firstMove ? 'bg-primary/5 border border-primary/20' : 'bg-red-500/5 border border-red-500/20'}`}>
                 {firstMoveError ? (
@@ -252,9 +234,25 @@ Return ONLY the JSON object. No explanation, no markdown, no extra text.`,
                       {firstMove.plain}
                     </p>
 
+                    {/* Deliverable */}
+                    {firstMove.deliverable && (
+                      <div className="space-y-0.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Hand in</p>
+                        <p className="text-xs font-medium">{firstMove.deliverable}</p>
+                      </div>
+                    )}
+
+                    {/* Hidden requirements */}
+                    {firstMove.hidden && !firstMove.hidden.toLowerCase().includes('no hidden') && (
+                      <div className="space-y-0.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-500">Easy to miss</p>
+                        <p className="text-xs text-muted-foreground">{firstMove.hidden}</p>
+                      </div>
+                    )}
+
                     {/* The first step — hero element */}
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-primary">Do this right now</p>
+                    <div className="space-y-0.5 pt-1 border-t border-border/50">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-primary">Start now</p>
                       <p className="text-sm font-medium leading-snug">{firstMove.firstStep}</p>
                     </div>
 

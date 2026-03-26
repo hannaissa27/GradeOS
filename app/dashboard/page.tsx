@@ -7,18 +7,12 @@ import { DashboardNav } from '@/components/dashboard-nav';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ExecuteTab } from '@/components/tabs/execute-tab';
 import { PlanTab } from '@/components/tabs/plan-tab';
-import { ScheduleTab } from '@/components/tabs/schedule-tab';
 import { ReflectTab } from '@/components/tabs/reflect-tab';
-import { CommandPalette } from '@/components/command-palette';
 import { useZenMode } from '@/hooks/use-zen-mode';
-import { fetchCourses, fetchAssignments, fetchSubmissions, fetchAnnouncements } from '@/lib/canvas-service';
+import { fetchCourses, fetchAssignments, fetchSubmissions } from '@/lib/canvas-service';
 import { computeCurrentGrade, getSemesterStart } from '@/lib/gradeUtils';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { AlertCircle } from 'lucide-react';
-import type { Course, Assignment, Submission, Announcement } from '@/lib/types';
+import type { Course, Assignment, Submission } from '@/lib/types';
 
-// Extract the main logic into a separate component
 function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -28,23 +22,19 @@ function DashboardContent() {
   const [activeTab, setActiveTab] = useState('execute');
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
 
-  // Shared data — loaded once, passed as props to all tabs
-  // Try to restore cached data immediately to avoid reload on navigation
   const getCached = (key: string) => {
     try { const v = sessionStorage.getItem(key); return v ? JSON.parse(v) : null; } catch { return null; }
   };
   const [courses, setCourses] = useState<Course[]>(() => getCached('gradeos-courses') || []);
   const [allAssignments, setAllAssignments] = useState<Assignment[]>(() => getCached('gradeos-assignments') || []);
   const [allSubmissions, setAllSubmissions] = useState<Submission[]>(() => getCached('gradeos-submissions') || []);
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isLoading, setIsLoading] = useState(() => !(getCached('gradeos-courses')?.length > 0));
   const [error, setError] = useState<string | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(() => !!(getCached('gradeos-courses')?.length > 0));
 
-  // Handle URL params for tab
   useEffect(() => {
     const tab = searchParams.get('tab');
-    if (tab && ['execute', 'courses', 'schedule', 'reflect'].includes(tab)) {
+    if (tab && ['execute', 'courses', 'reflect'].includes(tab)) {
       setActiveTab(tab);
     }
     const courseId = searchParams.get('course');
@@ -64,7 +54,6 @@ function DashboardContent() {
         coursesData.map(async (course) => {
           try {
             const assignments = await fetchAssignments(course.id, connection);
-            console.log(`[GradeOS] ${course.code}: ${assignments.length} assignments`);
             return assignments.map((a) => ({
               ...a,
               courseName: course.name,
@@ -87,7 +76,6 @@ function DashboardContent() {
       setAllAssignments(allAssignmentsFlat);
       setAllSubmissions(allSubmissionsFlat);
 
-      // Compute grades from actual submissions, not Canvas's cumulative score
       const semStart = getSemesterStart();
       const coursesWithGrades = coursesData.map((course) => {
         const courseAssignments = allAssignmentsFlat.filter((a) => a.courseId === course.id);
@@ -99,23 +87,12 @@ function DashboardContent() {
       setCourses(coursesWithGrades);
       setError(null);
       setHasLoadedOnce(true);
-      // Cache to survive navigation to /todos and back
       try {
         sessionStorage.setItem('gradeos-courses', JSON.stringify(coursesWithGrades));
         sessionStorage.setItem('gradeos-assignments', JSON.stringify(allAssignmentsFlat));
         sessionStorage.setItem('gradeos-submissions', JSON.stringify(allSubmissionsFlat));
       } catch {}
-
-      if (connection.connected) {
-        const announcementsData = await fetchAnnouncements(
-          coursesData.map((c) => c.id),
-          connection
-        );
-        setAnnouncements(announcementsData);
-      }
     } catch (err) {
-      // Never show error on the very first load - it causes a flash
-      // Only show error if user manually retried after a successful load
       if (hasLoadedOnce) {
         setError(err instanceof Error ? err.message : 'Failed to load data');
       }
@@ -125,23 +102,20 @@ function DashboardContent() {
     }
   }, [connection, hasLoadedOnce]);
 
-  // Load once on mount, then only when user explicitly syncs
   useEffect(() => {
     if (!hasLoadedOnce) {
       loadData();
     }
-  }, []); // empty deps - only run once on mount
+  }, []);
 
-  // Reload when user first connects (not on every remount)
   const prevConnected = React.useRef(false);
   useEffect(() => {
     if (connection.connected && !prevConnected.current && !hasLoadedOnce) {
       loadData();
     }
     prevConnected.current = connection.connected;
-  }, [connection.connected]); // eslint-disable-line
+  }, [connection.connected]);
 
-  // Auto-dismiss error after 8 seconds
   useEffect(() => {
     if (error) {
       const timer = setTimeout(() => setError(null), 8000);
@@ -175,21 +149,11 @@ function DashboardContent() {
         onSync={loadData}
       />
 
-      <CommandPalette
-        courses={courses}
-        assignments={allAssignments}
-        onSync={loadData}
-        onToggleZenMode={toggleZenMode}
-        zenModeActive={isZenMode}
-        onSelectCourse={handleSelectCourse}
-      />
-
       <main className="max-w-7xl mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 mb-6">
+          <TabsList className="grid w-full grid-cols-3 mb-6">
             <TabsTrigger value="execute">Dashboard</TabsTrigger>
             <TabsTrigger value="courses">My Courses</TabsTrigger>
-            <TabsTrigger value="schedule">My Week</TabsTrigger>
             <TabsTrigger value="reflect">Analytics</TabsTrigger>
           </TabsList>
 
@@ -198,7 +162,6 @@ function DashboardContent() {
               courses={courses}
               allAssignments={allAssignments}
               allSubmissions={allSubmissions}
-              announcements={announcements}
               isLoading={isLoading}
               error={error}
               onSelectCourse={handleSelectCourse}
@@ -222,15 +185,6 @@ function DashboardContent() {
             />
           </TabsContent>
 
-          <TabsContent value="schedule" className="mt-0">
-            <ScheduleTab
-              courses={courses}
-              allAssignments={allAssignments}
-              allSubmissions={allSubmissions}
-              isLoading={isLoading}
-            />
-          </TabsContent>
-
           <TabsContent value="reflect" className="mt-0">
             <ReflectTab
               courses={courses}
@@ -245,7 +199,6 @@ function DashboardContent() {
   );
 }
 
-// Wrap the content in a Suspense boundary for the default export
 export default function DashboardPage() {
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading dashboard...</div>}>

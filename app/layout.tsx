@@ -9,7 +9,7 @@ const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono"
 
 export const metadata: Metadata = {
   title: 'GradeOS',
-  description: 'Priority queues, grade forecasting, AI triage, and deep analytics for Canvas students',
+  description: 'Grade planning, workload forecasting, AI diagnosis, and deep analytics for Canvas students',
   generator: 'v0.app',
   icons: {
     icon: [

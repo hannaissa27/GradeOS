@@ -1,20 +1,17 @@
 'use client';
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { TrendingUp, TrendingDown, Minus, AlertTriangle, Clock, Target, Zap } from 'lucide-react';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { TrendingUp, AlertTriangle, Clock, Target, Zap } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { 
   getGradeColor, 
   gradeToLetter, 
   computeProjectedGrade, 
-  submissionTiming,
-  courseColor,
-  minutesToLabel
+  courseColor
 } from '@/lib/gradeUtils';
-import { getAllEffortOverrides } from '@/lib/db-queries';
 import { HelpTip } from '@/components/help-tip';
 import type { Course, Assignment, Submission } from '@/lib/types';
 
@@ -40,11 +37,6 @@ const shortCourseName = (course: Course) => {
 
 export function ReflectTab({ courses, assignments, submissions, isLoading }: ReflectTabProps) {
   const data: AnalyticsData = { courses, assignments, submissions };
-  const [effortOverrides, setEffortOverrides] = useState<Map<string, number>>(new Map());
-
-  useEffect(() => {
-    getAllEffortOverrides().then(setEffortOverrides).catch(() => {});
-  }, []);
 
   if (isLoading) {
     return (
@@ -95,14 +87,6 @@ export function ReflectTab({ courses, assignments, submissions, isLoading }: Ref
           <PointsLostCard data={data} />
           <GradeTrajectoryCard data={data} />
         </div>
-      </section>
-
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <h2 className="text-lg font-semibold">Effort Calibration</h2>
-          <HelpTip text="Shows every assignment where you set an effort estimate in the Priority Queue, alongside your actual score. Helps you see if your time estimates are accurate — if you're estimating 1 hour but scoring 60%, you're either underestimating the work or not using the time well." />
-        </div>
-        <EffortCalibrationCard data={data} effortOverrides={effortOverrides} />
       </section>
     </div>
   );
@@ -748,129 +732,6 @@ function GradeTrajectoryCard({ data }: { data: AnalyticsData }) {
               </ResponsiveContainer>
             </div>
           </>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-// ============ Effort Calibration ============
-
-function EffortCalibrationCard({
-  data,
-  effortOverrides,
-}: {
-  data: AnalyticsData;
-  effortOverrides: Map<string, number>;
-}) {
-  // Find assignments where the student set an effort estimate
-  const calibrationData = data.assignments
-    .filter(a => effortOverrides.has(a.id))
-    .map(a => {
-      const estimated = effortOverrides.get(a.id)!;
-      const submission = data.submissions.find(s => s.assignmentId === a.id);
-      const score = submission?.score ?? null;
-      const pointsPossible = a.pointsPossible || 1;
-      const scorePercent = score !== null ? Math.round((score / pointsPossible) * 100) : null;
-      return {
-        name: a.name,
-        courseCode: a.courseCode,
-        estimated,
-        scorePercent,
-        pointsPossible,
-        score,
-      };
-    });
-
-  const totalEstimatedHours = calibrationData.reduce((s, d) => s + d.estimated, 0) / 60;
-  const avgScoreOnEstimated = calibrationData.filter(d => d.scorePercent !== null).length > 0
-    ? Math.round(
-        calibrationData
-          .filter(d => d.scorePercent !== null)
-          .reduce((s, d) => s + d.scorePercent!, 0) /
-        calibrationData.filter(d => d.scorePercent !== null).length
-      )
-    : null;
-
-  if (calibrationData.length === 0) {
-    return (
-      <Card>
-        <CardContent className="p-6 text-center text-muted-foreground text-sm">
-          <p>No effort estimates set yet.</p>
-          <p className="text-xs mt-1">Use the effort slider on Priority Queue cards to track how long you think assignments will take. Your estimates will appear here with actual results.</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">Effort Calibration</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Summary */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-xs text-muted-foreground">Total time budgeted</p>
-            <p className="text-2xl font-bold">{totalEstimatedHours.toFixed(1)}h</p>
-            <p className="text-xs text-muted-foreground">across {calibrationData.length} assignments</p>
-          </div>
-          {avgScoreOnEstimated !== null && (
-            <div>
-              <p className="text-xs text-muted-foreground">Avg score on tracked work</p>
-              <p className={`text-2xl font-bold ${getGradeColor(avgScoreOnEstimated)}`}>
-                {avgScoreOnEstimated}%
-              </p>
-              <p className="text-xs text-muted-foreground">{gradeToLetter(avgScoreOnEstimated)}</p>
-            </div>
-          )}
-        </div>
-
-        {/* Per-assignment breakdown */}
-        <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Assignment breakdown</p>
-          <div className="space-y-1.5">
-            {calibrationData.map((d, i) => (
-              <div key={i} className="flex items-center justify-between gap-3 py-1.5 border-b border-border/50 last:border-0">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{d.name}</p>
-                  <p className="text-xs text-muted-foreground">{d.courseCode}</p>
-                </div>
-                <div className="flex items-center gap-4 flex-shrink-0 text-xs">
-                  <div className="text-right">
-                    <p className="text-muted-foreground">Estimated</p>
-                    <p className="font-medium">{minutesToLabel(d.estimated)}</p>
-                  </div>
-                  {d.scorePercent !== null ? (
-                    <div className="text-right">
-                      <p className="text-muted-foreground">Score</p>
-                      <p className={`font-medium ${getGradeColor(d.scorePercent)}`}>
-                        {d.score}/{d.pointsPossible}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="text-right">
-                      <p className="text-muted-foreground">Score</p>
-                      <p className="text-muted-foreground">Pending</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Insight */}
-        {avgScoreOnEstimated !== null && (
-          <div className="p-3 bg-muted/50 rounded-lg">
-            <p className="text-xs text-muted-foreground">
-              {avgScoreOnEstimated >= 85
-                ? `Your effort estimates are paying off — you're averaging ${avgScoreOnEstimated}% on assignments you planned for.`
-                : avgScoreOnEstimated >= 75
-                ? `You're averaging ${avgScoreOnEstimated}% on tracked assignments. Consider adding more time to your estimates.`
-                : `Your tracked assignments average ${avgScoreOnEstimated}%. Try increasing your effort estimates or starting earlier.`}
-            </p>
-          </div>
         )}
       </CardContent>
     </Card>

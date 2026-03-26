@@ -7,7 +7,6 @@ import { useTheme } from '@/hooks/use-theme';
 import { ConnectionModal } from './connection-modal';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Input } from '@/components/ui/input';
 import {
   Sun, Moon, RefreshCw, CheckCircle2, Eye, EyeOff, CheckSquare,
   Settings, LogOut, ExternalLink,
@@ -26,7 +25,6 @@ interface DashboardNavProps {
 function SettingsPanel() {
   const { isConnected, connection, disconnect } = useCanvas();
   const { theme, toggle } = useTheme();
-  const [showUrlEdit, setShowUrlEdit] = useState(false);
   const [supaStatus, setSupaStatus] = useState<'idle'|'checking'|'ok'|'error'>('idle');
   const [open, setOpen] = useState(false);
 
@@ -39,19 +37,6 @@ function SettingsPanel() {
     } catch {
       setSupaStatus('error');
     }
-  };
-
-  const saveAiKey = () => {
-    if (!aiKey.trim()) return;
-    localStorage.setItem('gradeos-ai-key', aiKey.trim());
-    setAiKeySet(true);
-    setAiKey('');
-  };
-
-  const removeAiKey = () => {
-    localStorage.removeItem('gradeos-ai-key');
-    setAiKeySet(false);
-    setAiStep(1);
   };
 
   return (
@@ -84,7 +69,7 @@ function SettingsPanel() {
                   </div>
                   <div>
                     <p className="font-medium text-sm">{connection.userName}</p>
-                    <p className="text-xs text-muted-foreground truncate max-w-[220px]">{connection.domain}</p>
+                    <p className="text-xs text-muted-foreground truncate max-w-[220px]">{connection.canvasUrl ? new URL(connection.canvasUrl).hostname : 'Demo mode'}</p>
                   </div>
                   <div className="ml-auto flex items-center gap-1 text-xs text-green-500">
                     <CheckCircle2 className="w-3.5 h-3.5" />
@@ -151,7 +136,7 @@ function SettingsPanel() {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Database (schedules, todos)</span>
+                <span className="text-muted-foreground">Database (todos)</span>
                 <span className={supaStatus === 'ok' ? 'text-green-500' : supaStatus === 'error' ? 'text-red-500' : 'text-muted-foreground'}>
                   {supaStatus === 'ok' ? 'Connected' : supaStatus === 'error' ? 'Not set up' : 'Checking...'}
                 </span>
@@ -162,7 +147,7 @@ function SettingsPanel() {
               </div>
               {supaStatus === 'error' && (
                 <div className="text-xs bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 mt-1 space-y-2">
-                  <p className="font-medium text-amber-600 dark:text-amber-400">Database not set up — Todos and Schedule won't save</p>
+                  <p className="font-medium text-amber-600 dark:text-amber-400">Database not set up — Todos won't save</p>
                   <p className="text-muted-foreground">To fix this, go to your Supabase project and run this SQL once:</p>
                   <ol className="text-muted-foreground space-y-1 pl-3">
                     <li>1. Open <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer" className="text-primary underline">supabase.com/dashboard</a></li>
