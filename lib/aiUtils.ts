@@ -35,7 +35,7 @@ export async function callClaude(
 // ONE AI call estimates effort for ALL pending assignments
 // Cached in sessionStorage to avoid repeat calls
 
-const EFFORT_CACHE_KEY = 'gradeos-effort-estimates';
+const EFFORT_CACHE_KEY = 'gradeos-effort-v2';
 const EFFORT_CACHE_TTL = 1000 * 60 * 60 * 4; // 4 hours
 
 interface EffortCache {
@@ -57,10 +57,18 @@ function getEffortCache(): EffortCache | null {
 
 function setEffortCache(estimates: Record<string, number>) {
   try {
+    sessionStorage.removeItem('gradeos-effort-estimates'); // clear old v1 cache
     sessionStorage.setItem(EFFORT_CACHE_KEY, JSON.stringify({
       estimates,
       timestamp: Date.now(),
     }));
+  } catch {}
+}
+
+export function clearEffortCache() {
+  try {
+    sessionStorage.removeItem(EFFORT_CACHE_KEY);
+    sessionStorage.removeItem('gradeos-effort-estimates');
   } catch {}
 }
 
