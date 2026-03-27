@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ChevronDown, Clock, AlertTriangle, Zap, Loader2, CheckCircle2 } from 'lucide-react';
+import { ChevronDown, Clock, AlertTriangle, Zap, Loader2, CheckCircle2, EyeOff, Eye } from 'lucide-react';
 import {
   courseColor,
   formatDueDate,
@@ -11,7 +11,7 @@ import {
   minutesToLabel,
   getGradeColor,
 } from '@/lib/gradeUtils';
-import { callClaude, dismissMissing, undismissMissing } from '@/lib/aiUtils';
+import { callClaude, dismissMissing, undismissMissing, ignoreAssignment, unignoreAssignment } from '@/lib/aiUtils';
 import type { Assignment, Submission } from '@/lib/types';
 
 interface FirstMoveResult {
@@ -31,6 +31,8 @@ interface AssignmentCardProps {
   aiEffortMinutes?: number;
   dismissedMissing?: Set<string>;
   onDismissedMissingChange?: () => void;
+  ignoredAssignments?: Set<string>;
+  onIgnoredChange?: () => void;
 }
 
 export function AssignmentCard({
@@ -42,6 +44,8 @@ export function AssignmentCard({
   aiEffortMinutes,
   dismissedMissing = new Set(),
   onDismissedMissingChange,
+  ignoredAssignments = new Set(),
+  onIgnoredChange,
 }: AssignmentCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -133,6 +137,18 @@ Return ONLY the JSON. No markdown.`,
     onDismissedMissingChange?.();
   };
 
+  const isIgnored = ignoredAssignments.has(assignment.id);
+
+  const handleIgnore = () => {
+    ignoreAssignment(assignment.id);
+    onIgnoredChange?.();
+  };
+
+  const handleUnignore = () => {
+    unignoreAssignment(assignment.id);
+    onIgnoredChange?.();
+  };
+
   return (
     <Card className="overflow-hidden">
       <CardContent className="px-3 py-2">
@@ -202,6 +218,18 @@ Return ONLY the JSON. No markdown.`,
                 : <Zap className="h-3 w-3" />
               }
               <span className="hidden sm:inline text-xs">Decode</span>
+            </button>
+
+            <button
+              onClick={isIgnored ? handleUnignore : handleIgnore}
+              className={`p-1 rounded transition-colors cursor-pointer ${
+                isIgnored
+                  ? 'text-amber-500 hover:text-amber-600 hover:bg-accent'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+              }`}
+              title={isIgnored ? 'Restore to list' : 'Remove from list (AI will ignore)'}
+            >
+              {isIgnored ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
             </button>
 
             <button

@@ -8,7 +8,7 @@ import { GradeImpactAdvisor } from '@/components/grade-impact-advisor';
 import { CollisionDetector } from '@/components/collision-detector';
 import { AlertCircle } from 'lucide-react';
 import { GradeAutopsy } from '@/components/grade-autopsy';
-import { batchEstimateEffort, getDismissedMissing } from '@/lib/aiUtils';
+import { batchEstimateEffort, getDismissedMissing, getIgnoredAssignments } from '@/lib/aiUtils';
 import type { Course, Assignment, Submission } from '@/lib/types';
 
 interface ExecuteTabProps {
@@ -36,10 +36,17 @@ export function ExecuteTab({
 }: ExecuteTabProps) {
   const [effortEstimates, setEffortEstimates] = useState<Record<string, number>>({});
   const [dismissedMissing, setDismissedMissing] = useState<Set<string>>(new Set());
+  const [ignoredAssignments, setIgnoredAssignments] = useState<Set<string>>(() => getIgnoredAssignments());
 
   const submissionMap = useMemo(() =>
     new Map(allSubmissions.map(s => [s.assignmentId, s])),
     [allSubmissions]
+  );
+
+  // Assignments visible to AI (excluded ignored ones)
+  const aiAssignments = useMemo(() =>
+    allAssignments.filter(a => !ignoredAssignments.has(a.id)),
+    [allAssignments, ignoredAssignments]
   );
 
   // Load dismissed missing on mount
@@ -47,11 +54,11 @@ export function ExecuteTab({
     setDismissedMissing(getDismissedMissing());
   }, []);
 
-  // Batch estimate effort for all pending assignments — ONE AI call
+  // Batch estimate effort for all pending non-ignored assignments — ONE AI call
   useEffect(() => {
-    if (allAssignments.length === 0) return;
+    if (aiAssignments.length === 0) return;
 
-    const pending = allAssignments.filter(a => {
+    const pending = aiAssignments.filter(a => {
       const sub = submissionMap.get(a.id);
       return !sub?.submittedAt && (sub?.score === null || sub?.score === undefined) && !sub?.excused;
     });
@@ -61,11 +68,16 @@ export function ExecuteTab({
     batchEstimateEffort(pending)
       .then(setEffortEstimates)
       .catch(() => {});
-  }, [allAssignments, submissionMap]);
+  }, [aiAssignments, submissionMap]);
 
   // Callback for when missing is dismissed in a child
   const handleDismissMissingChange = () => {
     setDismissedMissing(getDismissedMissing());
+  };
+
+  // Callback for when an assignment is ignored/unignored
+  const handleIgnoredChange = () => {
+    setIgnoredAssignments(getIgnoredAssignments());
   };
 
   if (error) {
@@ -101,7 +113,7 @@ export function ExecuteTab({
       {!isLoading && (
         <WeeklyBrief
           courses={courses}
-          allAssignments={allAssignments}
+          allAssignments={aiAssignments}
           allSubmissions={allSubmissions}
         />
       )}
@@ -110,7 +122,7 @@ export function ExecuteTab({
       {!isLoading && Object.keys(effortEstimates).length > 0 && (
         <CollisionDetector
           courses={courses}
-          allAssignments={allAssignments}
+          allAssignments={aiAssignments}
           allSubmissions={allSubmissions}
           effortEstimates={effortEstimates}
           dismissedMissing={dismissedMissing}
@@ -149,7 +161,7 @@ export function ExecuteTab({
       {!isLoading && Object.keys(effortEstimates).length > 0 && (
         <GradeImpactAdvisor
           courses={courses}
-          allAssignments={allAssignments}
+          allAssignments={aiAssignments}
           allSubmissions={allSubmissions}
           effortEstimates={effortEstimates}
           dismissedMissing={dismissedMissing}
@@ -165,6 +177,7 @@ export function ExecuteTab({
         effortEstimates={effortEstimates}
         dismissedMissing={dismissedMissing}
         onDismissedMissingChange={handleDismissMissingChange}
+        onIgnoredChange={handleIgnoredChange}
       />
     </div>
   );

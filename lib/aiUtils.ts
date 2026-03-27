@@ -86,7 +86,20 @@ export async function batchEstimateEffort(
   try {
     const response = await callClaude(
       `Estimate effort in minutes for each assignment:\n${lines}`,
-      `You estimate how long college assignments take. Return ONLY a JSON array of integers (minutes), one per assignment, in the same order. Base estimates on assignment type and points: quizzes 15-45min, short homework 30-60min, essays/papers 60-180min, labs 90-180min, projects 120-300min, discussions 15-30min. Example response: [30,90,45,120]\nReturn ONLY the array. No text.`,
+      `You estimate how long high school and college assignments take to complete. Return ONLY a JSON array of integers (minutes), one per assignment, in the same order.
+
+Use the assignment NAME as the primary signal — it tells you the real type:
+- AP exams, mock exams, AP practice tests: 180-240 min
+- Major tests, unit tests (2+ units), midterms, finals: 90-150 min
+- Chapter tests, single-unit tests: 60-90 min
+- Quizzes (any kind): 20-40 min
+- Essays, research papers, written reports: 90-240 min scaled by points
+- Lab reports, projects, presentations: 90-240 min scaled by points
+- Homework, practice problems, worksheets, problem sets: 20-60 min scaled by points
+- Discussions, reading responses, short reflections: 15-30 min
+- Reading assignments: 30-60 min
+
+An "AP Mock Exam" must NOT get the same estimate as a "Homework" or a "Quiz". Scale by points only as a secondary signal when names are ambiguous. Example response: [30,180,25,45]\nReturn ONLY the array. No text.`,
       200
     );
 
@@ -104,15 +117,36 @@ export async function batchEstimateEffort(
     console.error('[GradeOS] Batch effort estimation failed:', err);
   }
 
-  // Fallback: heuristic estimates based on points
+  // Fallback: heuristic estimates based on name and points
   const fallback: Record<string, number> = cache?.estimates ? { ...cache.estimates } : {};
   uncached.forEach(a => {
+    const name = (a.name || '').toLowerCase();
     const types = (a.submissionTypes || []).join(',').toLowerCase();
-    if (types.includes('quiz')) fallback[a.id] = 30;
-    else if (types.includes('discussion')) fallback[a.id] = 20;
-    else if (a.pointsPossible >= 100) fallback[a.id] = 120;
-    else if (a.pointsPossible >= 50) fallback[a.id] = 60;
-    else fallback[a.id] = 45;
+    if (/ap.*(exam|mock|test|practice)/i.test(a.name) || /mock.*(ap|exam)/i.test(a.name)) {
+      fallback[a.id] = 210;
+    } else if (/midterm|final\s*exam/i.test(a.name)) {
+      fallback[a.id] = 120;
+    } else if (/unit\s*test|\d\s*unit.*test|chapter\s*test|major\s*test/i.test(a.name)) {
+      fallback[a.id] = 100;
+    } else if (/\btest\b/i.test(a.name)) {
+      fallback[a.id] = 75;
+    } else if (/\bquiz\b/i.test(a.name)) {
+      fallback[a.id] = 25;
+    } else if (/\bessay\b|research\s*paper|\bpaper\b|\breport\b/i.test(a.name)) {
+      fallback[a.id] = Math.max(90, Math.min(180, a.pointsPossible));
+    } else if (/\bproject\b|\bpresentation\b|\blab\b/i.test(a.name)) {
+      fallback[a.id] = Math.max(90, Math.min(240, a.pointsPossible * 1.5));
+    } else if (/\bdiscussion\b|\bresponse\b|\breflection\b/i.test(a.name) || types.includes('discussion')) {
+      fallback[a.id] = 20;
+    } else if (/\bhomework\b|\bpractice\b|\bworksheet\b|\bproblem\s*set\b/i.test(a.name)) {
+      fallback[a.id] = Math.max(20, Math.min(60, a.pointsPossible / 2));
+    } else if (a.pointsPossible >= 100) {
+      fallback[a.id] = 120;
+    } else if (a.pointsPossible >= 50) {
+      fallback[a.id] = 60;
+    } else {
+      fallback[a.id] = 35;
+    }
   });
   setEffortCache(fallback);
   return fallback;
@@ -141,4 +175,29 @@ export function undismissMissing(assignmentId: string) {
   const current = getDismissedMissing();
   current.delete(assignmentId);
   localStorage.setItem(DISMISSED_MISSING_KEY, JSON.stringify([...current]));
+}
+
+// ============ Assignment Ignore (hide from list + AI) ============
+
+const IGNORED_ASSIGNMENTS_KEY = 'gradeos-ignored-assignments';
+
+export function getIgnoredAssignments(): Set<string> {
+  try {
+    const raw = localStorage.getItem(IGNORED_ASSIGNMENTS_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function ignoreAssignment(assignmentId: string) {
+  const current = getIgnoredAssignments();
+  current.add(assignmentId);
+  localStorage.setItem(IGNORED_ASSIGNMENTS_KEY, JSON.stringify([...current]));
+}
+
+export function unignoreAssignment(assignmentId: string) {
+  const current = getIgnoredAssignments();
+  current.delete(assignmentId);
+  localStorage.setItem(IGNORED_ASSIGNMENTS_KEY, JSON.stringify([...current]));
 }
