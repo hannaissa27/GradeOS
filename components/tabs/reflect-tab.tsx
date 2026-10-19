@@ -13,7 +13,6 @@ import {
   computeProjectedGrade, 
   courseColor
 } from '@/lib/gradeUtils';
-import { HelpTip } from '@/components/help-tip';
 import type { Course, Assignment, Submission } from '@/lib/types';
 
 interface AnalyticsData {
@@ -57,17 +56,8 @@ export function ReflectTab({ courses, assignments, submissions, isLoading }: Ref
 
   return (
     <div className="space-y-8">
-      {/* Intro banner */}
-      <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 space-y-1">
-        <p className="text-sm font-medium">Your study patterns, in numbers</p>
-        <p className="text-xs text-muted-foreground">Analytics shows things Canvas never will — where you are losing points, how your grades are trending, and whether starting early actually improves your scores. All calculated from your real grade data.</p>
-      </div>
-
       <section>
-        <div className="flex items-center gap-2 mb-4">
-          <h2 className="text-lg font-semibold">Weekly Wrap</h2>
-          <HelpTip text="Six cards calculated from your real Canvas data — what's due this week, where your grades are trending, how submitting early vs late affects your scores, and what small assignments you're losing points on. All real numbers, nothing made up." />
-        </div>
+        <h2 className="text-lg font-semibold mb-4">This week</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <GradeRiskCard data={data} />
           <GradeChangeCard data={data} />
@@ -84,10 +74,7 @@ export function ReflectTab({ courses, assignments, submissions, isLoading }: Ref
       />
 
       <section>
-        <div className="flex items-center gap-2 mb-4">
-          <h2 className="text-lg font-semibold">Monthly Wrap</h2>
-          <HelpTip text="Bigger picture analytics for the semester — your grade in every course over time, submission habits (early vs on-time vs late), where you lost points, and your grade trajectory as a line chart. Tap courses on the trajectory chart to show or hide them." />
-        </div>
+        <h2 className="text-lg font-semibold mb-4">This semester</h2>
         <div className="space-y-4">
           <SemesterSnapshotCard data={data} />
           <SubmissionPatternsCard data={data} />
@@ -128,7 +115,7 @@ function GradeRiskCard({ data }: { data: AnalyticsData }) {
       <CardContent>
         {upcoming.length === 0 ? (
           <>
-            <p className="text-2xl font-bold text-[oklch(var(--grade-safe))]">Nothing due</p>
+            <p className="text-2xl font-bold text-green-600 dark:text-green-400">Nothing due</p>
             <p className="text-xs text-muted-foreground mt-1">Clear week ahead</p>
           </>
         ) : (
@@ -291,11 +278,21 @@ function WorkloadForecastCard({ data }: { data: AnalyticsData }) {
     return !sub?.submittedAt && (sub?.score === null || sub?.score === undefined);
   });
 
-  const byDay: Record<string, number> = {};
+  const byDayMap = new Map<string, { label: string; count: number; ts: number }>();
   upcoming.forEach(a => {
-    const key = new Date(a.dueDate!).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    byDay[key] = (byDay[key] || 0) + 1;
+    const d = new Date(a.dueDate!);
+    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    const entry = byDayMap.get(key) || {
+      label: d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+      count: 0,
+      ts: new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(),
+    };
+    entry.count++;
+    byDayMap.set(key, entry);
   });
+  // Chronological order
+  const byDay: Record<string, number> = {};
+  [...byDayMap.values()].sort((a, b) => a.ts - b.ts).forEach(e => { byDay[e.label] = e.count; });
 
   const busiest = Object.entries(byDay).sort((a, b) => b[1] - a[1])[0];
 
@@ -563,7 +560,7 @@ function PointsLostCard({ data }: { data: AnalyticsData }) {
         <CardTitle className="text-sm font-medium">Where You Lost Points</CardTitle>
       </CardHeader>
       <CardContent>
-        <p className="text-2xl font-bold text-[oklch(var(--grade-danger))] mb-4">
+        <p className="text-2xl font-bold text-red-500 mb-4">
           -{totalLost} pts total
         </p>
         <div className="overflow-x-auto">
@@ -579,7 +576,7 @@ function PointsLostCard({ data }: { data: AnalyticsData }) {
               {sortedReasons.slice(0, 5).map((r, i) => (
                 <tr key={i} className="border-b border-border/50">
                   <td className="py-2">{r.reason}</td>
-                  <td className="py-2 text-right text-[oklch(var(--grade-danger))]">-{r.points}</td>
+                  <td className="py-2 text-right text-red-500">-{r.points}</td>
                   <td className="py-2 text-right text-muted-foreground">{r.course}</td>
                 </tr>
               ))}
@@ -592,11 +589,9 @@ function PointsLostCard({ data }: { data: AnalyticsData }) {
 }
 
 function GradeTrajectoryCard({ data }: { data: AnalyticsData }) {
-  const [selectedCourseIds, setSelectedCourseIds] = useState<Set<string>>(
-    new Set(data.courses
-      .filter(c => !/advisory|school meeting|homeroom|counseling/i.test(c.name || ''))
-      .map(c => c.id))
-  );
+  // Track hidden courses (not shown ones) so courses that load later are included by default.
+  const [hiddenCourseIds, setHiddenCourseIds] = useState<Set<string>>(new Set());
+  const isShown = (id: string) => !hiddenCourseIds.has(id);
 
   const getShortName = (course: Course) => {
     const name = course.name;
@@ -606,19 +601,19 @@ function GradeTrajectoryCard({ data }: { data: AnalyticsData }) {
   };
 
   const toggleCourse = (id: string) => {
-    setSelectedCourseIds(prev => {
+    setHiddenCourseIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) {
-        if (next.size > 1) next.delete(id); // keep at least 1
-      } else {
-        next.add(id);
+        next.delete(id);
+      } else if (data.courses.filter(c => !next.has(c.id)).length > 1) {
+        next.add(id); // keep at least one visible
       }
       return next;
     });
   };
 
   const courseLines = data.courses
-    .filter(course => selectedCourseIds.has(course.id))
+    .filter(course => isShown(course.id))
     .filter(course => {
       // Skip advisory/non-academic courses
       const name = (course.name || '').toLowerCase();
@@ -683,7 +678,7 @@ function GradeTrajectoryCard({ data }: { data: AnalyticsData }) {
         {/* Course selector */}
         <div className="flex flex-wrap gap-2">
           {data.courses.map(course => {
-            const isSelected = selectedCourseIds.has(course.id);
+            const isSelected = isShown(course.id);
             const color = courseColor(course.id);
             return (
               <button

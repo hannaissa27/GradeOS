@@ -49,7 +49,6 @@ export function ExecuteTab({
     [allAssignments, ignoredAssignments]
   );
 
-  // Load dismissed missing on mount
   useEffect(() => {
     setDismissedMissing(getDismissedMissing());
   }, []);
@@ -65,20 +64,15 @@ export function ExecuteTab({
 
     if (pending.length === 0) return;
 
+    let cancelled = false;
     batchEstimateEffort(pending)
-      .then(setEffortEstimates)
+      .then(est => { if (!cancelled) setEffortEstimates(est); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, [aiAssignments, submissionMap]);
 
-  // Callback for when missing is dismissed in a child
-  const handleDismissMissingChange = () => {
-    setDismissedMissing(getDismissedMissing());
-  };
-
-  // Callback for when an assignment is ignored/unignored
-  const handleIgnoredChange = () => {
-    setIgnoredAssignments(getIgnoredAssignments());
-  };
+  const handleDismissMissingChange = () => setDismissedMissing(getDismissedMissing());
+  const handleIgnoredChange = () => setIgnoredAssignments(getIgnoredAssignments());
 
   if (error) {
     return (
@@ -107,19 +101,28 @@ export function ExecuteTab({
     );
   }
 
-  return (
-    <div className="space-y-5">
-      {/* AI Weekly Brief */}
-      {!isLoading && (
-        <WeeklyBrief
-          courses={courses}
-          allAssignments={aiAssignments}
-          allSubmissions={allSubmissions}
-        />
-      )}
+  const hasEstimates = Object.keys(effortEstimates).length > 0;
 
-      {/* Due Date Collisions */}
-      {!isLoading && Object.keys(effortEstimates).length > 0 && (
+  return (
+    <div className="space-y-6">
+      {/* Grades — the headline */}
+      <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+        {isLoading
+          ? [...Array(4)].map((_, i) => <LiveGradeCardSkeleton key={i} />)
+          : courses.map((course) => (
+              <LiveGradeCard
+                key={course.id}
+                course={course}
+                assignments={getAssignmentsForCourse(course.id)}
+                submissions={getSubmissionsForCourse(course.id)}
+                dismissedMissing={dismissedMissing}
+                onClick={() => onSelectCourse?.(course.id)}
+              />
+            ))}
+      </section>
+
+      {/* Heads-up: deadlines that land together */}
+      {!isLoading && hasEstimates && (
         <CollisionDetector
           courses={courses}
           allAssignments={aiAssignments}
@@ -129,46 +132,32 @@ export function ExecuteTab({
         />
       )}
 
-      {/* Grade cards */}
-      <div>
-        <p className="text-xs text-muted-foreground mb-2 font-medium uppercase tracking-wide">Your grades right now — click any course for details</p>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-          {isLoading
-            ? [...Array(4)].map((_, i) => <LiveGradeCardSkeleton key={i} />)
-            : courses.map((course) => (
-                <LiveGradeCard
-                  key={course.id}
-                  course={course}
-                  assignments={getAssignmentsForCourse(course.id)}
-                  submissions={getSubmissionsForCourse(course.id)}
-                  dismissedMissing={dismissedMissing}
-                  onClick={() => onSelectCourse?.(course.id)}
-                />
-              ))}
-        </div>
-      </div>
-
-      {/* Grade Autopsy */}
+      {/* AI insights — one quiet card, each tool is a single row until you open it */}
       {!isLoading && (
-        <GradeAutopsy
-          courses={courses}
-          allAssignments={allAssignments}
-          allSubmissions={allSubmissions}
-        />
+        <section className="rounded-xl border border-border bg-card divide-y divide-border">
+          <WeeklyBrief
+            courses={courses}
+            allAssignments={aiAssignments}
+            allSubmissions={allSubmissions}
+          />
+          {hasEstimates && (
+            <GradeImpactAdvisor
+              courses={courses}
+              allAssignments={aiAssignments}
+              allSubmissions={allSubmissions}
+              effortEstimates={effortEstimates}
+              dismissedMissing={dismissedMissing}
+            />
+          )}
+          <GradeAutopsy
+            courses={courses}
+            allAssignments={allAssignments}
+            allSubmissions={allSubmissions}
+          />
+        </section>
       )}
 
-      {/* Grade Impact Advisor — cross-course optimization */}
-      {!isLoading && Object.keys(effortEstimates).length > 0 && (
-        <GradeImpactAdvisor
-          courses={courses}
-          allAssignments={aiAssignments}
-          allSubmissions={allSubmissions}
-          effortEstimates={effortEstimates}
-          dismissedMissing={dismissedMissing}
-        />
-      )}
-
-      {/* Assignments — sorted by priority, uses AI effort estimates */}
+      {/* Assignments */}
       <PriorityStack
         assignments={allAssignments}
         submissions={allSubmissions}

@@ -16,7 +16,8 @@ import {
   formatDueDate,
   getDueDateColor,
 } from '@/lib/gradeUtils';
-import { callClaude, getDismissedMissing, dismissMissing as dismissMissingFn } from '@/lib/aiUtils';
+import { callClaude, parseAIJson, aiErrorMessage, getDismissedMissing, dismissMissing as dismissMissingFn } from '@/lib/aiUtils';
+import { stripHtml } from '@/lib/utils';
 import type { Course, Assignment, Submission } from '@/lib/types';
 
 interface PlanTabProps {
@@ -83,10 +84,7 @@ export function PlanTab({
   if (!selectedCourseId) {
     return (
       <div className="space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold">My Courses</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Click any course to see your grade, assignments, and what you need to hit your target.</p>
-        </div>
+        <h2 className="text-lg font-semibold">My Courses</h2>
         {isLoading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-36 w-full" />)}
@@ -102,7 +100,7 @@ export function PlanTab({
                 const sub = cs.find(s => s.assignmentId === a.id);
                 return !sub?.submittedAt && (sub?.score === null || sub?.score === undefined) && a.dueDate && new Date(a.dueDate) > now;
               });
-              const missing = cs.filter(s => s.missing).length;
+              const missing = cs.filter(s => s.missing && !s.excused && !dismissedMissing.has(s.assignmentId)).length;
               const shortName = (() => {
                 const n = course.name || '';
                 const after = n.includes(':') ? n.split(':').slice(1).join(':').trim() : n;
@@ -316,10 +314,10 @@ function AssignmentRow({ assignment, submission }: {
         <div className="px-3 pb-3 pt-1 border-t border-border space-y-3">
           <FirstMoveButton assignment={assignment} />
 
-          {assignment.description && (
-            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3"
-              dangerouslySetInnerHTML={{ __html: assignment.description.slice(0, 300) }}
-            />
+          {assignment.description && stripHtml(assignment.description) && (
+            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+              {stripHtml(assignment.description).slice(0, 300)}
+            </p>
           )}
         </div>
       )}
@@ -336,19 +334,14 @@ function FirstMoveButton({ assignment }: { assignment: Assignment }) {
   const [error, setError] = useState<string | null>(null);
 
   const handle = async () => {
-    if (open && result) { setOpen(false); return; }
+    if (open && (result || error)) { setOpen(false); return; }
     setOpen(true);
     if (result || loading) return;
 
     setLoading(true);
+    setError(null);
     try {
-      const cleanDesc = (assignment.description || '')
-        .replace(/<[^>]*>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 500);
+      const cleanDesc = stripHtml(assignment.description || '').slice(0, 500);
 
       const prompt = `Assignment: ${assignment.name}. Points: ${assignment.pointsPossible}. Due: ${assignment.dueDate ? new Date(assignment.dueDate).toLocaleDateString() : 'No due date'}. ${cleanDesc ? `Description: ${cleanDesc}` : ''}`.trim();
 
@@ -357,18 +350,22 @@ function FirstMoveButton({ assignment }: { assignment: Assignment }) {
         `You decode assignments so students understand them instantly. Return ONLY valid JSON:
 {"plain":"One sentence: what to do. Start with a verb.","deliverable":"What to hand in, be specific.","hidden":"One sentence about easy-to-miss requirements, or 'Nothing hidden.' if straightforward.","firstStep":"One 2-minute action to start RIGHT NOW.","timeEstimate":"Realistic estimate like 'About 45 minutes'."}
 Return ONLY the JSON. No markdown.`,
-        400
+        400,
+        { json: true }
       );
 
-      const parsed = JSON.parse(response.replace(/```json|```/g, '').trim());
+      const parsed = parseAIJson<{ plain?: string; deliverable?: string; hidden?: string; firstStep?: string; timeEstimate?: string }>(response);
       if (parsed.plain && parsed.firstStep && parsed.timeEstimate) {
-        setResult(parsed);
+        setResult({
+          plain: parsed.plain,
+          deliverable: parsed.deliverable || '',
+          hidden: parsed.hidden || '',
+          firstStep: parsed.firstStep,
+          timeEstimate: parsed.timeEstimate,
+        });
       } else throw new Error('Bad response');
-    } catch (err: any) {
-      const msg = err?.message || '';
-      setError(msg.includes('429') || msg.includes('rate')
-        ? 'AI is rate-limited. Try again in a minute.'
-        : 'Could not decode. Try again.');
+    } catch (err) {
+      setError(aiErrorMessage(err, 'Could not decode this assignment. Try again.'));
     } finally {
       setLoading(false);
     }

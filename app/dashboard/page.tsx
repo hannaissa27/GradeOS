@@ -9,7 +9,7 @@ import { ExecuteTab } from '@/components/tabs/execute-tab';
 import { PlanTab } from '@/components/tabs/plan-tab';
 import { ReflectTab } from '@/components/tabs/reflect-tab';
 import { useZenMode } from '@/hooks/use-zen-mode';
-import { fetchCourses, fetchAssignments, fetchSubmissions } from '@/lib/canvas-service';
+import { fetchCourses, fetchCourseWork } from '@/lib/canvas-service';
 import { computeCurrentGrade, getSemesterStart } from '@/lib/gradeUtils';
 import type { Course, Assignment, Submission } from '@/lib/types';
 
@@ -50,28 +50,24 @@ function DashboardContent() {
     try {
       const coursesData = await fetchCourses(connection);
 
-      const assignmentsResults = await Promise.all(
+      // One request per course returns both assignments and submissions.
+      const work = await Promise.all(
         coursesData.map(async (course) => {
           try {
-            const assignments = await fetchAssignments(course.id, connection);
-            return assignments.map((a) => ({
-              ...a,
-              courseName: course.name,
-              courseCode: course.code,
-            }));
+            const { assignments, submissions } = await fetchCourseWork(course.id, connection);
+            return {
+              assignments: assignments.map((a) => ({ ...a, courseName: course.name, courseCode: course.code })),
+              submissions,
+            };
           } catch (err) {
-            console.error(`[GradeOS] FAILED to fetch assignments for ${course.code}:`, err);
-            return [];
+            console.error(`[GradeOS] FAILED to fetch work for ${course.code}:`, err);
+            return { assignments: [], submissions: [] };
           }
         })
       );
 
-      const submissionsResults = await Promise.all(
-        coursesData.map((course) => fetchSubmissions(course.id, connection))
-      );
-
-      const allAssignmentsFlat = assignmentsResults.flat();
-      const allSubmissionsFlat = submissionsResults.flat();
+      const allAssignmentsFlat = work.flatMap((w) => w.assignments);
+      const allSubmissionsFlat = work.flatMap((w) => w.submissions);
 
       setAllAssignments(allAssignmentsFlat);
       setAllSubmissions(allSubmissionsFlat);

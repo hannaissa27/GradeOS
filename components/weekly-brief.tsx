@@ -2,8 +2,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { Loader2, Sparkles, RefreshCw } from 'lucide-react';
-import { callClaude, getDismissedMissing } from '@/lib/aiUtils';
-import { getGradeColor, gradeToLetter, formatDueDate } from '@/lib/gradeUtils';
+import { callClaude, getDismissedMissing, aiErrorMessage } from '@/lib/aiUtils';
+import { gradeToLetter } from '@/lib/gradeUtils';
 import type { Course, Assignment, Submission } from '@/lib/types';
 
 interface WeeklyBriefProps {
@@ -72,7 +72,7 @@ export function WeeklyBrief({ courses, allAssignments, allSubmissions }: WeeklyB
 
   const handleGenerate = async () => {
     if (weekContext.upcoming.length === 0 && weekContext.missing.length === 0) {
-      setBrief("You have nothing due this week and no missing assignments. Enjoy the break — or get ahead on next week's work.");
+      setBrief("Nothing due this week and no missing assignments. Enjoy the break — or get ahead on next week's work.");
       setHasGenerated(true);
       return;
     }
@@ -92,56 +92,48 @@ export function WeeklyBrief({ courses, allAssignments, allSubmissions }: WeeklyB
 
       const response = await callClaude(
         prompt,
-        `You are a student's academic strategist. Given their current grades and this week's assignments, write a concise 3-5 sentence battle plan. Be direct and specific: which assignment to start first and why (use points and grade impact as reasoning), which course needs the most attention, and one concrete action for today. If there are missing assignments, address those first. Do NOT use bullet points, headers, or markdown. Write in second person ("You should..."). Keep it under 120 words.`,
+        `You are a student's academic strategist. Given their current grades and this week's assignments, write a concise 3-5 sentence plan. Be direct and specific: which assignment to start first and why (use points and grade impact as reasoning), which course needs the most attention, and one concrete action for today. If there are missing assignments, address those first. Do NOT use bullet points, headers, or markdown. Write in second person ("You should..."). Keep it under 120 words.`,
         300
       );
 
       setBrief(response.trim());
       setHasGenerated(true);
-    } catch (err: any) {
-      if (err?.message?.includes('429') || err?.message?.includes('rate')) {
-        setError('AI is busy — too many requests. Try again in a minute.');
-      } else {
-        setError('Could not generate brief. Try again.');
-      }
+    } catch (err) {
+      setError(aiErrorMessage(err, 'Could not generate your plan. Try again.'));
     } finally {
       setLoading(false);
     }
   };
 
-  // Don't show if no data yet
   if (courses.length === 0) return null;
 
+  const meta = `${weekContext.upcoming.length} due this week${weekContext.missing.length > 0 ? ` · ${weekContext.missing.length} missing` : ''}`;
+
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
+    <div>
       {!hasGenerated ? (
-        <button
-          onClick={handleGenerate}
-          disabled={loading}
-          className="w-full px-4 py-3 flex items-center justify-between hover:bg-accent/30 transition-colors cursor-pointer"
-        >
-          <div className="flex items-center gap-2">
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
-            ) : (
-              <Sparkles className="h-4 w-4 text-primary" />
-            )}
-            <span className="text-sm font-medium">
-              {loading ? 'Analyzing your week...' : 'Generate your weekly battle plan'}
+        <div>
+          <button
+            onClick={handleGenerate}
+            disabled={loading}
+            className="w-full px-4 py-3 flex items-center justify-between gap-3 hover:bg-accent/30 transition-colors cursor-pointer text-left disabled:cursor-default"
+          >
+            <span className="flex items-center gap-2 min-w-0">
+              {loading
+                ? <Loader2 className="h-4 w-4 animate-spin text-primary flex-shrink-0" />
+                : <Sparkles className="h-4 w-4 text-primary flex-shrink-0" />}
+              <span className="text-sm font-medium truncate">{loading ? 'Planning your week…' : 'Plan my week'}</span>
             </span>
-          </div>
-          <span className="text-xs text-muted-foreground">
-            {weekContext.upcoming.length} due this week
-            {weekContext.missing.length > 0 && ` · ${weekContext.missing.length} missing`}
-          </span>
-        </button>
+            <span className="text-xs text-muted-foreground flex-shrink-0">{meta}</span>
+          </button>
+          {error && <p className="px-4 pb-3 -mt-1 text-xs text-red-500">{error}</p>}
+        </div>
       ) : (
         <div className="px-4 py-3 space-y-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <span className="text-sm font-semibold">Your Week</span>
-            </div>
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <Sparkles className="h-4 w-4 text-primary" /> Your week
+            </span>
             <button
               onClick={handleGenerate}
               disabled={loading}
@@ -151,11 +143,9 @@ export function WeeklyBrief({ courses, allAssignments, allSubmissions }: WeeklyB
               Refresh
             </button>
           </div>
-          {error ? (
-            <p className="text-xs text-red-500">{error}</p>
-          ) : (
-            <p className="text-sm text-muted-foreground leading-relaxed">{brief}</p>
-          )}
+          {error
+            ? <p className="text-xs text-red-500">{error}</p>
+            : <p className="text-sm text-muted-foreground leading-relaxed">{brief}</p>}
         </div>
       )}
     </div>

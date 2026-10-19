@@ -9,8 +9,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import {
   Sun, Moon, RefreshCw, CheckCircle2, Eye, EyeOff, CheckSquare,
-  Settings, LogOut, ExternalLink,
-  AlertCircle, Check,
+  Settings, LogOut, AlertCircle, Check,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -26,7 +25,17 @@ function SettingsPanel() {
   const { isConnected, connection, disconnect } = useCanvas();
   const { theme, toggle } = useTheme();
   const [supaStatus, setSupaStatus] = useState<'idle'|'checking'|'ok'|'error'>('idle');
+  const [aiStatus, setAiStatus] = useState<{ configured: boolean; provider?: string; model?: string } | null>(null);
   const [open, setOpen] = useState(false);
+
+  const checkAI = async () => {
+    try {
+      const res = await fetch('/api/ai');
+      setAiStatus(await res.json());
+    } catch {
+      setAiStatus({ configured: false });
+    }
+  };
 
   const checkSupabase = async () => {
     setSupaStatus('checking');
@@ -40,7 +49,7 @@ function SettingsPanel() {
   };
 
   return (
-    <Sheet open={open} onOpenChange={(v) => { setOpen(v); if (v) checkSupabase(); }}>
+    <Sheet open={open} onOpenChange={(v) => { setOpen(v); if (v) { checkSupabase(); checkAI(); } }}>
       <SheetTrigger asChild>
         <button
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer"
@@ -108,19 +117,29 @@ function SettingsPanel() {
             </div>
           </section>
 
-          {/* AI Features */}
+          {/* AI */}
           <section className="space-y-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">AI Features</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">AI</h3>
             <div className="rounded-xl border border-border p-5 space-y-2">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium">AI features</p>
-                <span className="text-xs text-green-500 flex items-center gap-1">
-                  <Check className="w-3.5 h-3.5" />Included
-                </span>
+                {aiStatus === null ? (
+                  <span className="text-xs text-muted-foreground">Checking…</span>
+                ) : aiStatus.configured ? (
+                  <span className="text-xs text-green-500 flex items-center gap-1"><Check className="w-3.5 h-3.5" />Ready</span>
+                ) : (
+                  <span className="text-xs text-red-500 flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" />Not set up</span>
+                )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                Grade Autopsy, How to start, and Syllabus Spy are all built in. No API key setup needed.
-              </p>
+              {aiStatus?.configured ? (
+                <p className="text-xs text-muted-foreground">
+                  Using <span className="text-foreground font-medium">{aiStatus.model}</span> via {aiStatus.provider}. Weekly plan, decoder, autopsy and analysis all run through it.
+                </p>
+              ) : aiStatus && (
+                <p className="text-xs text-muted-foreground">
+                  Add <code className="bg-muted px-1 rounded">GROQ_API_KEY</code> (or <code className="bg-muted px-1 rounded">GEMINI_API_KEY</code>) to <code className="bg-muted px-1 rounded">.env.local</code> and restart the dev server.
+                </p>
+              )}
             </div>
           </section>
 
@@ -142,8 +161,10 @@ function SettingsPanel() {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">AI features</span>
-                <span className="text-green-500">Active</span>
+                <span className="text-muted-foreground">AI</span>
+                <span className={aiStatus?.configured ? 'text-green-500' : aiStatus ? 'text-red-500' : 'text-muted-foreground'}>
+                  {aiStatus === null ? 'Checking...' : aiStatus.configured ? 'Ready' : 'Not set up'}
+                </span>
               </div>
               {supaStatus === 'error' && (
                 <div className="text-xs bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 mt-1 space-y-2">
@@ -183,7 +204,6 @@ export function DashboardNav({ isZenMode, onToggleZenMode, onSync }: DashboardNa
   const { isConnected, connection } = useCanvas();
   const [syncing, setSyncing] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const { theme } = useTheme();
 
   const handleSync = async () => {
     setSyncing(true);
@@ -204,9 +224,8 @@ export function DashboardNav({ isZenMode, onToggleZenMode, onSync }: DashboardNa
           {/* Connection status */}
           {isConnected && (
             <div className="flex items-center gap-2 text-sm">
-              <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-              <span className="text-muted-foreground hidden sm:inline">Connected</span>
-              <span className="font-medium">{connection.userName}</span>
+              <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+              <span className="text-muted-foreground hidden sm:inline">{connection.userName}</span>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button onClick={handleSync} disabled={syncing}

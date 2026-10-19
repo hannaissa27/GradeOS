@@ -11,7 +11,8 @@ import {
   minutesToLabel,
   getGradeColor,
 } from '@/lib/gradeUtils';
-import { callClaude, dismissMissing, undismissMissing, ignoreAssignment, unignoreAssignment } from '@/lib/aiUtils';
+import { callClaude, parseAIJson, aiErrorMessage, dismissMissing, undismissMissing, ignoreAssignment, unignoreAssignment } from '@/lib/aiUtils';
+import { stripHtml } from '@/lib/utils';
 import type { Assignment, Submission } from '@/lib/types';
 
 interface FirstMoveResult {
@@ -70,7 +71,7 @@ Course: ${assignment.courseName || assignment.courseCode}
 Points: ${assignment.pointsPossible}
 Due: ${assignment.dueDate ? new Date(assignment.dueDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'No due date'}
 Submission type: ${assignment.submissionTypes?.join(', ') || 'unknown'}
-Description: ${assignment.description ? assignment.description.replace(/<[^>]+>/g, '').slice(0, 500) : 'No description provided'}`;
+Description: ${assignment.description ? stripHtml(assignment.description).slice(0, 500) : 'No description provided'}`;
 
       const response = await callClaude(
         prompt,
@@ -83,11 +84,11 @@ Description: ${assignment.description ? assignment.description.replace(/<[^>]+>/
   "timeEstimate": "Realistic estimate like 'About 45 minutes'."
 }
 Return ONLY the JSON. No markdown.`,
-        500
+        500,
+        { json: true }
       );
 
-      const cleaned = response.replace(/```json|```/g, '').trim();
-      const parsed = JSON.parse(cleaned);
+      const parsed = parseAIJson<Partial<FirstMoveResult>>(response);
 
       if (parsed.plain && parsed.firstStep && parsed.timeEstimate) {
         setFirstMove({
@@ -100,13 +101,8 @@ Return ONLY the JSON. No markdown.`,
       } else {
         throw new Error('Incomplete response');
       }
-    } catch (err: any) {
-      const msg = err?.message || '';
-      if (msg.includes('429') || msg.includes('rate')) {
-        setFirstMoveError('AI is rate-limited. Try again in a minute.');
-      } else {
-        setFirstMoveError('Could not decode. Try again.');
-      }
+    } catch (err) {
+      setFirstMoveError(aiErrorMessage(err, 'Could not decode this assignment. Try again.'));
     } finally {
       setFirstMoveLoading(false);
     }
@@ -150,8 +146,8 @@ Return ONLY the JSON. No markdown.`,
   };
 
   return (
-    <Card className="overflow-hidden">
-      <CardContent className="px-3 py-2">
+    <Card className="overflow-hidden py-0 gap-0 shadow-none">
+      <CardContent className="px-3 py-2.5">
         {/* Top row */}
         <div className="flex items-start gap-2">
           <div
@@ -164,12 +160,6 @@ Return ONLY the JSON. No markdown.`,
               <span className="truncate max-w-[120px]">{courseDisplay}</span>
               <span>·</span>
               <span>{assignment.pointsPossible} pts</span>
-              {gradeImpact !== null && gradeImpact >= 1 && (
-                <><span>·</span><span className="text-amber-500 dark:text-amber-400">{gradeImpact}% of grade</span></>
-              )}
-              {aiEffortMinutes && (
-                <><span>·</span><span className="text-muted-foreground">~{minutesToLabel(aiEffortMinutes)}</span></>
-              )}
               <span>·</span>
               <span className={dueDateColorClass}>{formatDueDate(assignment.dueDate)}</span>
             </div>
@@ -291,19 +281,21 @@ Return ONLY the JSON. No markdown.`,
               </div>
             )}
 
-            {/* AI effort estimate display */}
-            {aiEffortMinutes && (
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Clock className="h-3 w-3" />
-                <span>AI estimates ~{minutesToLabel(aiEffortMinutes)} of effort</span>
-              </div>
-            )}
+            {/* Quick facts */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              {gradeImpact !== null && gradeImpact >= 1 && (
+                <span>Worth <span className="text-foreground font-medium">{gradeImpact}%</span> of your course grade</span>
+              )}
+              {!!aiEffortMinutes && (
+                <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> ~{minutesToLabel(aiEffortMinutes)} estimated</span>
+              )}
+            </div>
 
             {/* Description preview */}
-            {assignment.description && (
-              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3"
-                dangerouslySetInnerHTML={{ __html: assignment.description.slice(0, 300) }}
-              />
+            {assignment.description && stripHtml(assignment.description) && (
+              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+                {stripHtml(assignment.description).slice(0, 300)}
+              </p>
             )}
           </div>
         )}
@@ -314,8 +306,8 @@ Return ONLY the JSON. No markdown.`,
 
 export function AssignmentCardSkeleton() {
   return (
-    <Card>
-      <CardContent className="px-3 py-2">
+    <Card className="py-0 gap-0 shadow-none">
+      <CardContent className="px-3 py-2.5">
         <div className="flex items-start gap-2">
           <Skeleton className="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0" />
           <div className="flex-1 space-y-1">

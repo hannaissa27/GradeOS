@@ -61,8 +61,8 @@ function SortableTodoCard({
   };
 
   const priorityColor = {
-    high: 'bg-[oklch(var(--grade-danger))]',
-    medium: 'bg-[oklch(var(--grade-warning))]',
+    high: 'bg-red-500',
+    medium: 'bg-amber-500',
     low: 'bg-muted-foreground/50',
   }[todo.priority];
 

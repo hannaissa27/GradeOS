@@ -12,21 +12,7 @@ export const metadata: Metadata = {
   description: 'Grade planning, workload forecasting, AI diagnosis, and deep analytics for Canvas students',
   generator: 'v0.app',
   icons: {
-    icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
-    ],
-    apple: '/apple-icon.png',
+    icon: [{ url: '/icon.svg', type: 'image/svg+xml' }],
   },
 }
 
@@ -37,11 +23,19 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable}`}>
+      <head>
+        {/* Apply the saved theme before first paint so dark mode doesn't flash white. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem('gradeos-theme');if(t==='dark'||(!t&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.classList.add('dark')}catch(e){}`,
+          }}
+        />
+      </head>
       <body className="font-sans antialiased">
         <Providers>
           {children}
         </Providers>
-        <Analytics />
+        {process.env.NEXT_PUBLIC_VERCEL_ENV ? <Analytics /> : null}
       </body>
     </html>
   )

@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Loader2, TrendingUp } from 'lucide-react';
-import { callClaude } from '@/lib/aiUtils';
+import { callClaude, aiErrorMessage } from '@/lib/aiUtils';
 import { getGradeColor, gradeToLetter, courseColor } from '@/lib/gradeUtils';
 import type { Course, Assignment, Submission } from '@/lib/types';
 
@@ -100,8 +100,8 @@ export function GradeImpactAdvisor({
 
       setAdvice(response.trim());
       setHasGenerated(true);
-    } catch (err: any) {
-      setError(err?.message?.includes('429') ? 'AI is busy — try again in a minute.' : 'Could not generate. Try again.');
+    } catch (err) {
+      setError(aiErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -110,40 +110,38 @@ export function GradeImpactAdvisor({
   if (courses.length === 0 || courseAnalysis.length === 0) return null;
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
+    <div>
       {!hasGenerated ? (
-        <button
-          onClick={handleGenerate}
-          disabled={loading}
-          className="w-full px-4 py-3 flex items-center justify-between hover:bg-accent/30 transition-colors cursor-pointer"
-        >
-          <div className="flex items-center gap-2">
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
-            ) : (
-              <TrendingUp className="h-4 w-4 text-primary" />
-            )}
-            <span className="text-sm font-medium">
-              {loading ? 'Analyzing your courses...' : 'Where should I spend my time?'}
+        <div>
+          <button
+            onClick={handleGenerate}
+            disabled={loading}
+            className="w-full px-4 py-3 flex items-center justify-between gap-3 hover:bg-accent/30 transition-colors cursor-pointer text-left disabled:cursor-default"
+          >
+            <span className="flex items-center gap-2 min-w-0">
+              {loading
+                ? <Loader2 className="h-4 w-4 animate-spin text-primary flex-shrink-0" />
+                : <TrendingUp className="h-4 w-4 text-primary flex-shrink-0" />}
+              <span className="text-sm font-medium truncate">{loading ? 'Comparing your courses…' : 'Where should I focus?'}</span>
             </span>
-          </div>
-          <span className="text-xs text-muted-foreground">
-            {courseAnalysis.length} courses with upcoming work
-          </span>
-        </button>
+            <span className="text-xs text-muted-foreground flex-shrink-0">
+              {courseAnalysis.length} course{courseAnalysis.length !== 1 ? 's' : ''} with upcoming work
+            </span>
+          </button>
+          {error && <p className="px-4 pb-3 -mt-1 text-xs text-red-500">{error}</p>}
+        </div>
       ) : (
         <div className="px-4 py-3 space-y-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-primary" />
-              <span className="text-sm font-semibold">Grade Impact Advisor</span>
-            </div>
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <TrendingUp className="h-4 w-4 text-primary" /> Where to focus
+            </span>
             <button
               onClick={handleGenerate}
               disabled={loading}
               className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
             >
-              {loading ? 'Refreshing...' : 'Refresh'}
+              {loading ? 'Refreshing…' : 'Refresh'}
             </button>
           </div>
 
@@ -153,25 +151,22 @@ export function GradeImpactAdvisor({
               <div key={c.course.id} className="flex items-center gap-2 text-xs">
                 <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: courseColor(c.course.id) }} />
                 <span className="w-28 truncate text-muted-foreground">{c.shortName}</span>
-                <span className={`w-10 font-bold ${getGradeColor(c.grade)}`}>{c.grade}%</span>
+                <span className={`w-10 font-semibold ${getGradeColor(c.grade)}`} data-grade="true">{c.grade}%</span>
                 <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                   <div
                     className="h-full rounded-full bg-primary"
                     style={{ width: `${Math.min(c.impactPct * 2, 100)}%`, opacity: 0.3 + (c.impactPct / 100) * 0.7 }}
                   />
                 </div>
-                <span className="text-muted-foreground w-16 text-right">{c.totalUpcomingPts}pts</span>
-                <span className="text-muted-foreground w-10 text-right">~{Math.round(c.totalEffortMins / 60)}h</span>
+                <span className="text-muted-foreground w-14 text-right">{c.totalUpcomingPts} pts</span>
+                <span className="text-muted-foreground w-9 text-right">~{Math.round(c.totalEffortMins / 60)}h</span>
               </div>
             ))}
           </div>
 
-          {/* AI advice */}
-          {error ? (
-            <p className="text-xs text-red-500">{error}</p>
-          ) : advice && (
-            <p className="text-sm text-muted-foreground leading-relaxed">{advice}</p>
-          )}
+          {error
+            ? <p className="text-xs text-red-500">{error}</p>
+            : advice && <p className="text-sm text-muted-foreground leading-relaxed">{advice}</p>}
         </div>
       )}
     </div>

@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, BarChart3 } from 'lucide-react';
-import { callClaude } from '@/lib/aiUtils';
+import { callClaude, aiErrorMessage } from '@/lib/aiUtils';
 import { getGradeColor } from '@/lib/gradeUtils';
 import type { Assignment, Submission } from '@/lib/types';
 
@@ -118,8 +118,8 @@ Be direct, use numbers, reference the actual category names and weights. No bull
 
       setInsight(response.trim());
       setHasGenerated(true);
-    } catch (err: any) {
-      setError(err?.message?.includes('429') ? 'AI is busy — try again in a minute.' : 'Could not analyze. Try again.');
+    } catch (err) {
+      setError(aiErrorMessage(err, 'Could not analyze. Try again.'));
     } finally {
       setLoading(false);
     }
@@ -178,17 +178,20 @@ Be direct, use numbers, reference the actual category names and weights. No bull
 
         {/* AI insight */}
         {!hasGenerated ? (
-          <button
-            onClick={handleAnalyze}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-border hover:bg-accent/30 transition-colors cursor-pointer text-xs text-muted-foreground hover:text-foreground"
-          >
-            {loading ? (
-              <><Loader2 className="h-3 w-3 animate-spin" /> Analyzing patterns...</>
-            ) : (
-              'Analyze my grade patterns'
-            )}
-          </button>
+          <div className="space-y-1.5">
+            <button
+              onClick={handleAnalyze}
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-border hover:bg-accent/30 transition-colors cursor-pointer text-xs text-muted-foreground hover:text-foreground"
+            >
+              {loading ? (
+                <><Loader2 className="h-3 w-3 animate-spin" /> Analyzing patterns...</>
+              ) : (
+                'Analyze my grade patterns'
+              )}
+            </button>
+            {error && <p className="text-xs text-red-500">{error}</p>}
+          </div>
         ) : error ? (
           <p className="text-xs text-red-500">{error}</p>
         ) : insight && (

@@ -2,8 +2,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { Loader2, TrendingDown, TrendingUp } from 'lucide-react';
-import { callClaude } from '@/lib/aiUtils';
-import { getGradeColor, gradeToLetter, courseColor } from '@/lib/gradeUtils';
+import { callClaude, aiErrorMessage } from '@/lib/aiUtils';
+import { getGradeColor } from '@/lib/gradeUtils';
 import type { Course, Assignment, Submission } from '@/lib/types';
 
 interface PostGradeDebriefProps {
@@ -24,7 +24,7 @@ interface RecentGrade {
 export function PostGradeDebrief({ course, assignments, submissions }: PostGradeDebriefProps) {
   const [debrief, setDebrief] = useState<Record<string, string>>({}); // assignmentId → debrief text
   const [loading, setLoading] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({}); // assignmentId → error (per card)
 
   // Find grades returned in last 7 days
   const recentGrades = useMemo((): RecentGrade[] => {
@@ -70,7 +70,7 @@ export function PostGradeDebrief({ course, assignments, submissions }: PostGrade
     if (debrief[id]) return; // already generated
 
     setLoading(id);
-    setError(null);
+    setErrors(prev => { const next = { ...prev }; delete next[id]; return next; });
     try {
       const shortName = (() => {
         const n = course.name || '';
@@ -103,8 +103,8 @@ ${rg.submission.late ? 'This was submitted late.' : ''}`;
       );
 
       setDebrief(prev => ({ ...prev, [id]: response.trim() }));
-    } catch (err: any) {
-      setError(err?.message?.includes('429') ? 'AI is busy — try again in a minute.' : 'Could not generate debrief.');
+    } catch (err) {
+      setErrors(prev => ({ ...prev, [id]: aiErrorMessage(err, 'Could not generate debrief. Tap to retry.') }));
     } finally {
       setLoading(null);
     }
@@ -158,9 +158,9 @@ ${rg.submission.late ? 'This was submitted late.' : ''}`;
               </div>
             )}
 
-            {error && loading === null && (
+            {errors[id] && !isLoading && (
               <div className="px-3 pb-2">
-                <p className="text-xs text-red-500">{error}</p>
+                <p className="text-xs text-red-500">{errors[id]}</p>
               </div>
             )}
           </div>

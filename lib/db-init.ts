@@ -5,9 +5,8 @@ export async function initializeTables() {
 
   try {
     // Create tables with IF NOT EXISTS
-    await supabase.rpc('initialize_gradeos_tables').catch(() => {
-      // If RPC doesn't exist, we'll just create them on demand
-    });
+    // If the RPC doesn't exist, tables are created by scripts/001_create_tables.sql instead.
+    await supabase.rpc('initialize_gradeos_tables');
   } catch (error) {
     console.error('[GradeOS] Error initializing tables:', error);
   }

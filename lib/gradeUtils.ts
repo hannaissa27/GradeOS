@@ -87,7 +87,7 @@ export function computeCurrentGrade(
   }
 
   if (totalPossible === 0) return null;
-  return Math.round((totalEarned / totalPossible) * 10000) / 100;
+  return Math.round((totalEarned / totalPossible) * 1000) / 10;
 }
 
 /**

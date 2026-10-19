@@ -1,5 +1,5 @@
 // AI utilities for GradeOS
-// All AI calls route through /api/ai (server-side Groq key)
+// All AI calls route through /api/ai (server-side API key; provider/model chosen via env vars)
 
 import type { Assignment } from './types';
 
@@ -7,10 +7,50 @@ export function hasAIKey(): boolean {
   return true;
 }
 
+export interface AICallOptions {
+  /** Ask the provider for strict JSON output (the prompt must still describe the shape). */
+  json?: boolean;
+}
+
+export class AIError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/** Human-friendly message for a failed AI call (shared by every AI widget). */
+export function aiErrorMessage(err: unknown, fallback = 'Could not generate. Try again.'): string {
+  const status = err instanceof AIError ? err.status : 0;
+  const msg = err instanceof Error ? err.message : '';
+  if (status === 429 || /rate|429|quota/i.test(msg)) return 'AI is busy — too many requests. Try again in a minute.';
+  if (status === 503 || /not configured/i.test(msg)) return 'AI is not set up yet — add an API key to .env.local.';
+  if (/decommissioned|does not exist|not found/i.test(msg)) return 'The AI model is unavailable. Check AI_MODEL in .env.local.';
+  return fallback;
+}
+
+/** Pull the first JSON object/array out of a model response, tolerating code fences and chatter. */
+export function parseAIJson<T = unknown>(text: string): T {
+  const cleaned = text.replace(/```(?:json)?/gi, '').trim();
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch {
+    const start = cleaned.search(/[\[{]/);
+    if (start === -1) throw new Error('No JSON in response');
+    const open = cleaned[start];
+    const close = open === '[' ? ']' : '}';
+    const end = cleaned.lastIndexOf(close);
+    if (end <= start) throw new Error('No JSON in response');
+    return JSON.parse(cleaned.slice(start, end + 1)) as T;
+  }
+}
+
 export async function callClaude(
   userPrompt: string,
   systemPrompt: string,
-  maxTokens = 800
+  maxTokens = 800,
+  options: AICallOptions = {}
 ): Promise<string> {
   const res = await fetch('/api/ai', {
     method: 'POST',
@@ -19,13 +59,14 @@ export async function callClaude(
       prompt: userPrompt,
       system: systemPrompt,
       maxTokens,
+      json: !!options.json,
     }),
   });
 
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    throw new Error(data.error || 'AI request failed');
+    throw new AIError(data.error || 'AI request failed', res.status);
   }
 
   return data.text || '';
@@ -35,7 +76,7 @@ export async function callClaude(
 // ONE AI call estimates effort for ALL pending assignments
 // Cached in sessionStorage to avoid repeat calls
 
-const EFFORT_CACHE_KEY = 'gradeos-effort-v2';
+const EFFORT_CACHE_KEY = 'gradeos-effort-v3';
 const EFFORT_CACHE_TTL = 1000 * 60 * 60 * 4; // 4 hours
 
 interface EffortCache {
@@ -57,7 +98,7 @@ function getEffortCache(): EffortCache | null {
 
 function setEffortCache(estimates: Record<string, number>) {
   try {
-    sessionStorage.removeItem('gradeos-effort-estimates'); // clear old v1 cache
+    sessionStorage.removeItem('gradeos-effort-estimates'); sessionStorage.removeItem('gradeos-effort-v2'); // clear old caches
     sessionStorage.setItem(EFFORT_CACHE_KEY, JSON.stringify({
       estimates,
       timestamp: Date.now(),
@@ -93,8 +134,8 @@ export async function batchEstimateEffort(
 
   try {
     const response = await callClaude(
-      `Estimate effort in minutes for each assignment:\n${lines}`,
-      `You estimate how long high school and college assignments take to complete. Return ONLY a JSON array of integers (minutes), one per assignment, in the same order.
+      `Estimate effort in minutes for each of these ${uncached.length} assignments:\n${lines}`,
+      `You estimate how long high school and college assignments take to complete. Return ONLY a JSON object of the form {"minutes":[...]} — an array of integers (minutes), one per assignment, in the same order as given.
 
 Use the assignment NAME as the primary signal — it tells you the real type:
 - AP exams, mock exams, AP practice tests: 180-240 min
@@ -107,11 +148,17 @@ Use the assignment NAME as the primary signal — it tells you the real type:
 - Discussions, reading responses, short reflections: 15-30 min
 - Reading assignments: 30-60 min
 
-An "AP Mock Exam" must NOT get the same estimate as a "Homework" or a "Quiz". Scale by points only as a secondary signal when names are ambiguous. Example response: [30,180,25,45]\nReturn ONLY the array. No text.`,
-      200
+An "AP Mock Exam" must NOT get the same estimate as a "Homework" or a "Quiz". Scale by points only as a secondary signal when names are ambiguous. Example response: {"minutes":[30,180,25,45]}\nReturn ONLY the JSON. No text.`,
+      Math.min(1500, 60 + uncached.length * 6),
+      { json: true }
     );
 
-    const parsed = JSON.parse(response.replace(/```json|```/g, '').trim());
+    const raw = parseAIJson<unknown>(response);
+    const parsed = Array.isArray(raw)
+      ? raw
+      : (raw && typeof raw === 'object' && Array.isArray((raw as { minutes?: unknown }).minutes))
+        ? (raw as { minutes: unknown[] }).minutes
+        : null;
     if (Array.isArray(parsed) && parsed.length === uncached.length) {
       const newEstimates: Record<string, number> = cache?.estimates ? { ...cache.estimates } : {};
       uncached.forEach((a, i) => {

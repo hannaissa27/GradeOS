@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getGradeColor, gradeToLetter, formatDueDate, computeCurrentGrade, getSemesterStart } from '@/lib/gradeUtils';
+import { getGradeColor, gradeToLetter, computeCurrentGrade, getSemesterStart } from '@/lib/gradeUtils';
 import type { Course, Assignment, Submission } from '@/lib/types';
 
 interface LiveGradeCardProps {
@@ -60,9 +60,9 @@ export function LiveGradeCard({ course, assignments, submissions, dismissedMissi
 
   return (
     <button
-      className="text-left w-full rounded-xl border border-border bg-card hover:bg-accent/20 transition-all cursor-pointer p-4 group relative overflow-hidden"
+      className="text-left w-full rounded-xl border border-border bg-card hover:border-foreground/30 transition-colors cursor-pointer p-4 group relative overflow-hidden"
       onClick={onClick}
-      title={`${course.name} — click for details`}
+      title={course.name}
     >
       {/* Course name */}
       <p className="text-xs text-muted-foreground truncate mb-2 font-medium">{shortName}</p>
@@ -107,10 +107,6 @@ export function LiveGradeCard({ course, assignments, submissions, dismissedMissi
         )}
       </div>
 
-      {/* Click hint */}
-      <p className="text-[10px] text-muted-foreground/60 mt-2 group-hover:text-muted-foreground transition-colors">
-        Tap for details →
-      </p>
     </button>
   );
 }

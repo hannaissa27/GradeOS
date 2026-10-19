@@ -4,7 +4,6 @@ import React, { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { TrendingUp, Clock, EyeOff, ChevronDown } from 'lucide-react';
-import { HelpTip } from '@/components/help-tip';
 import { AssignmentCard, AssignmentCardSkeleton } from './assignment-card';
 import { calculateROI } from '@/lib/gradeUtils';
 import { getIgnoredAssignments } from '@/lib/aiUtils';
@@ -112,10 +111,12 @@ export function PriorityStack({
     <TooltipProvider>
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <h3 className="font-semibold text-sm">Assignments</h3>
-            <HelpTip text="Your pending assignments sorted by priority. High value uses AI-estimated effort to find assignments with the most grade impact per hour. Due soonest sorts by deadline. Click the eye-off icon on any assignment to hide it from this list and from AI calculations." />
-          </div>
+          <h3 className="font-semibold text-sm">
+            Assignments
+            {sortedAssignments.length > 0 && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground">{sortedAssignments.length} pending</span>
+            )}
+          </h3>
           <div className="flex items-center gap-1.5">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -171,7 +172,7 @@ export function PriorityStack({
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
             >
               <EyeOff className="h-3 w-3" />
-              <span>{hiddenAssignments.length} hidden assignment{hiddenAssignments.length !== 1 ? 's' : ''} (ignored by AI)</span>
+              <span>{hiddenAssignments.length} hidden</span>
               <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${showIgnored ? 'rotate-180' : ''}`} />
             </button>
             {showIgnored && (

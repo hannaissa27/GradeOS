@@ -150,18 +150,22 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
       const total = g.possible + g.remaining + g.customRemaining;
       return total > 0 ? Math.round(((g.earned + rate * (g.remaining + g.customRemaining)) / total) * 1000) / 10 : null;
     }
+    // Categories with no graded work yet are assumed to continue at the overall current average,
+    // not at 0% (which would wrongly tank the projection).
+    const overallRate = computedGrade !== null ? computedGrade / 100 : null;
     let weightedSum = 0, totalWeight = 0;
     for (const g of groups) {
       if (g.weight === 0) continue;
       const totalPts = g.possible + g.remaining + g.customRemaining;
       if (totalPts === 0) continue;
-      const rate = g.possible > 0 ? g.earned / g.possible : 0;
+      const rate = g.possible > 0 ? g.earned / g.possible : overallRate;
+      if (rate === null) continue;
       const projected = (g.earned + rate * (g.remaining + g.customRemaining)) / totalPts;
       weightedSum += projected * g.weight;
       totalWeight += g.weight;
     }
     return totalWeight > 0 ? Math.round((weightedSum / totalWeight) * 1000) / 10 : null;
-  }, [groups, hasWeights]);
+  }, [groups, hasWeights, computedGrade]);
 
   // Target grade calculation
   const target = parseFloat(targetInput);
@@ -180,7 +184,7 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
       if (needed <= 0) return { type: 'already_achieved' as const };
       if (needed > futurePts) return { type: 'impossible' as const };
       const rate = needed / futurePts;
-      return { type: 'achievable' as const, rate, perGroup: [{ ...g, neededRate: rate }] };
+      return { type: 'achievable' as const, rate, perGroup: [{ ...g, neededRate: rate, neededPct: Math.round(rate * 100), futurePts }] };
     }
 
     // Weighted: figure out required rate per group
@@ -255,8 +259,8 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
             Grade Planner
           </CardTitle>
           <HelpTip text={hasWeights
-            ? "This course uses weighted categories (e.g. Tests = 40%, Homework = 20%). Grade Planner calculates what you need on each remaining assignment per category to hit your target grade. Add any upcoming assignments not yet on Canvas using 'Add manually'."
-            : "Type your target grade to see the minimum you need on every remaining assignment. Add future assignments not yet on Canvas using 'Add manually'."
+            ? "This course uses weighted categories. Projected = if you keep your current average; Best possible = 100% on everything left. Type a target to see what you need per category. Add assignments not yet on Canvas with the link at the bottom."
+            : "Projected = if you keep your current average; Best possible = 100% on everything left. Type a target to see the minimum you need on every remaining assignment."
           } />
         </div>
       </CardHeader>
@@ -272,25 +276,20 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
             <p className={`text-xs ${getGradeColor(gradeDisplay)}`}>{gradeToLetter(gradeDisplay)}</p>
           </div>
           <div className="text-center p-3 rounded-lg bg-muted/50">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">If you keep this average</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1" title="If you keep scoring the same percentage on the remaining work">Projected</p>
             <p className={`text-xl font-bold ${getGradeColor(projected)}`} data-grade="true">
               {projected !== null ? `${projected}%` : '—'}
             </p>
             <p className={`text-xs ${getGradeColor(projected)}`}>{gradeToLetter(projected)}</p>
           </div>
           <div className="text-center p-3 rounded-lg bg-muted/50">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Best possible</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1" title="If you score 100% on everything left">Best possible</p>
             <p className={`text-xl font-bold ${getGradeColor(ceiling)}`} data-grade="true">
               {ceiling !== null ? `${ceiling}%` : '—'}
             </p>
             <p className={`text-xs ${getGradeColor(ceiling)}`}>{gradeToLetter(ceiling)}</p>
           </div>
         </div>
-
-        <p className="text-[10px] text-muted-foreground leading-relaxed">
-          <strong className="text-foreground">Best possible</strong> = if you get 100% on everything left.
-          <strong className="text-foreground"> If you keep this average</strong> = if you score the same percentage on remaining work as you have been.
-        </p>
 
         {/* Category breakdown if weighted */}
         {hasWeights && groups.length > 1 && (
@@ -504,9 +503,6 @@ export function GradeRescue({ currentGrade, assignments, submissions }: GradeRes
           </button>
         )}
 
-        <p className="text-[10px] text-muted-foreground">
-          Teachers often add assignments as the semester goes. Use "Add" above to include any upcoming exams not yet posted.
-        </p>
       </CardContent>
     </Card>
   );

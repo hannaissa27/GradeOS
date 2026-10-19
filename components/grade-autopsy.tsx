@@ -1,10 +1,9 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Loader2, ChevronRight, ChevronDown, AlertTriangle } from 'lucide-react';
-import { callClaude, hasAIKey } from '@/lib/aiUtils';
-import { courseColor, gradeToLetter, formatDueDate } from '@/lib/gradeUtils';
-import { HelpTip } from '@/components/help-tip';
+import { Loader2, ChevronRight, ChevronDown, Brain, X } from 'lucide-react';
+import { callClaude, parseAIJson, aiErrorMessage } from '@/lib/aiUtils';
+import { courseColor } from '@/lib/gradeUtils';
 import type { Course, Assignment, Submission } from '@/lib/types';
 
 interface GradeAutopsyProps {
@@ -51,6 +50,7 @@ export function GradeAutopsy({ courses, allAssignments, allSubmissions }: GradeA
   const [sessions, setSessions] = useState<Map<string, AutopsySession>>(new Map());
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [open, setOpen] = useState(false);
   
   React.useEffect(() => {
     try {
@@ -132,14 +132,6 @@ export function GradeAutopsy({ courses, allAssignments, allSubmissions }: GradeA
     const candidate = autopsyCandidates.find(c => c.assignment.id === assignmentId);
     if (!candidate) return;
 
-    if (!hasAIKey()) {
-      setSession(assignmentId, {
-        step: 'result',
-        error: 'Analysis failed. Please try again.',
-      });
-      return;
-    }
-
     // Build grade history context
     const courseHistory = allSubmissions
       .filter(s => s.courseId === candidate.course.id && s.score !== null)
@@ -192,38 +184,61 @@ export function GradeAutopsy({ courses, allAssignments, allSubmissions }: GradeA
         userMsg,
 
         'You are an academic coach. Diagnose why a student bombed an assignment. Four failure types: time_failure, confidence_illusion, knowledge_gap, test_taking_failure. Return ONLY this JSON (no markdown): {"failureType":"one of the four","failureLabel":"2-4 word label","diagnosis":"2-3 direct sentences naming what happened","nextAction":"one concrete next step for their next assignment"}',
-        600
+        600,
+        { json: true }
       );
 
-      const parsed = JSON.parse(response.replace(/```json|```/g, '').trim());
+      const parsed = parseAIJson<Partial<AutopsyResult>>(response);
+      const failureType: FailureType = (['time_failure', 'confidence_illusion', 'knowledge_gap', 'test_taking_failure'] as FailureType[])
+        .includes(parsed.failureType as FailureType) ? (parsed.failureType as FailureType) : 'knowledge_gap';
+      if (!parsed.diagnosis || !parsed.nextAction) throw new Error('Incomplete response');
       setSession(assignmentId, {
         step: 'result',
         result: {
-          ...parsed,
+          failureType,
+          failureLabel: parsed.failureLabel || failureType.replace(/_/g, ' '),
+          diagnosis: parsed.diagnosis,
+          nextAction: parsed.nextAction,
           assignmentName: candidate.assignment.name,
         },
       });
-    } catch (err: any) {
-      const msg = err?.message || '';
+    } catch (err) {
       setSession(assignmentId, {
         step: 'result',
-        error: msg === 'NO_API_KEY'
-          ? 'Could not generate. Try again.'
-          : msg === 'INVALID_API_KEY'
-          ? 'Invalid API key. Check your key in Settings.'
-          : 'Analysis failed. Try again.',
+        error: aiErrorMessage(err, 'Analysis failed. Try again.'),
       });
     }
   };
 
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <h3 className="text-sm font-medium text-red-500">Grade Autopsy</h3>
-        <HelpTip text="When you score significantly below your own average in a course, Grade Autopsy activates automatically. It asks you two quick questions, then tells you exactly which type of failure caused it — and gives you one specific action to prevent it next time. There are only four failure types. Knowing yours is the whole point." />
-        <span className="text-xs text-muted-foreground">— {autopsyCandidates.length} assignment{autopsyCandidates.length !== 1 ? 's' : ''} need{autopsyCandidates.length === 1 ? 's' : ''} attention</span>
-      </div>
+  const retry = (assignmentId: string) => {
+    setSessions(prev => {
+      const next = new Map(prev);
+      next.delete(assignmentId);
+      return next;
+    });
+  };
 
+  const count = autopsyCandidates.length;
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full px-4 py-3 flex items-center justify-between gap-3 hover:bg-accent/30 transition-colors cursor-pointer text-left"
+      >
+        <span className="flex items-center gap-2 min-w-0">
+          <Brain className="h-4 w-4 text-red-500 flex-shrink-0" />
+          <span className="text-sm font-medium truncate">Grade autopsy</span>
+        </span>
+        <span className="flex items-center gap-2 text-xs text-muted-foreground flex-shrink-0">
+          {count} grade{count !== 1 ? 's' : ''} below your average
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </span>
+      </button>
+
+      {open && (
+      <div className="px-4 pb-4 space-y-2">
+      <p className="text-xs text-muted-foreground">Two quick questions per grade, then a diagnosis and one thing to change next time.</p>
       {autopsyCandidates.map(({ assignment, submission, course, pct, coursePct }) => {
         const session = sessions.get(assignment.id);
         const gap = Math.round(coursePct - pct);
@@ -245,25 +260,32 @@ export function GradeAutopsy({ courses, allAssignments, allSubmissions }: GradeA
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => setCollapsed(prev => {
-                  const next = new Set(prev);
-                  next.has(assignment.id) ? next.delete(assignment.id) : next.add(assignment.id);
-                  return next;
-                })}
-                className="text-muted-foreground hover:text-foreground cursor-pointer p-1 flex-shrink-0"
-              >
-                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${collapsed.has(assignment.id) ? '-rotate-90' : ''}`} />
-              </button>
+              <div className="flex items-center flex-shrink-0">
+                <button
+                  onClick={() => setCollapsed(prev => {
+                    const next = new Set(prev);
+                    if (next.has(assignment.id)) next.delete(assignment.id); else next.add(assignment.id);
+                    return next;
+                  })}
+                  className="text-muted-foreground hover:text-foreground cursor-pointer p-1"
+                  title={collapsed.has(assignment.id) ? 'Expand' : 'Collapse'}
+                >
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${collapsed.has(assignment.id) ? '-rotate-90' : ''}`} />
+                </button>
+                <button
+                  onClick={() => dismiss(assignment.id)}
+                  className="text-muted-foreground hover:text-foreground cursor-pointer p-1"
+                  title="Dismiss — don't show this grade again"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
 
             {/* Content based on session state */}
             {!collapsed.has(assignment.id) && (!session ? (
               /* Prompt to start */
               <div className="px-3 pb-3">
-                <p className="text-xs text-muted-foreground mb-2">
-                  Something went wrong here. Let's figure out what — takes 10 seconds.
-                </p>
                   <button
                     onClick={() => setSession(assignment.id, { assignmentId: assignment.id, step: 'q1' })}
                     className="flex items-center gap-1.5 text-xs font-medium text-red-500 hover:text-red-600 cursor-pointer transition-colors"
@@ -322,7 +344,10 @@ export function GradeAutopsy({ courses, allAssignments, allSubmissions }: GradeA
               /* Result */
               <div className="px-3 pb-3">
                 {session.error ? (
-                  <p className="text-xs text-muted-foreground">{session.error}</p>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-red-500">{session.error}</span>
+                    <button onClick={() => retry(assignment.id)} className="underline text-muted-foreground hover:text-foreground cursor-pointer">Retry</button>
+                  </div>
                 ) : session.result && (
                   <div className={`rounded-lg border p-3 space-y-3 ${FAILURE_BG[session.result.failureType]}`}>
                     {/* Failure type badge */}
@@ -349,6 +374,8 @@ export function GradeAutopsy({ courses, allAssignments, allSubmissions }: GradeA
           </div>
         );
       })}
+      </div>
+      )}
     </div>
   );
 }

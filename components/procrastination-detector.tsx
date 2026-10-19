@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, Clock } from 'lucide-react';
-import { callClaude } from '@/lib/aiUtils';
+import { callClaude, aiErrorMessage } from '@/lib/aiUtils';
 import { getGradeColor } from '@/lib/gradeUtils';
 import type { Assignment, Submission } from '@/lib/types';
 
@@ -118,8 +118,8 @@ export function ProcrastinationDetector({ assignments, submissions }: Procrastin
       );
 
       setInsight(response.trim());
-    } catch (err: any) {
-      setError(err?.message?.includes('429') ? 'AI is busy — try in a minute.' : 'Could not analyze.');
+    } catch (err) {
+      setError(aiErrorMessage(err, 'Could not analyze. Try again.'));
     } finally {
       setLoading(false);
     }
@@ -176,15 +176,16 @@ export function ProcrastinationDetector({ assignments, submissions }: Procrastin
 
         {/* AI insight */}
         {!insight ? (
-          <button
-            onClick={handleInsight}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-border hover:bg-accent/30 transition-colors cursor-pointer text-xs text-muted-foreground hover:text-foreground"
-          >
-            {loading ? <><Loader2 className="h-3 w-3 animate-spin" /> Analyzing...</> : 'What does this mean for my grades?'}
-          </button>
-        ) : error ? (
-          <p className="text-xs text-red-500">{error}</p>
+          <div className="space-y-1.5">
+            <button
+              onClick={handleInsight}
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-border hover:bg-accent/30 transition-colors cursor-pointer text-xs text-muted-foreground hover:text-foreground"
+            >
+              {loading ? <><Loader2 className="h-3 w-3 animate-spin" /> Analyzing...</> : 'What does this mean for my grades?'}
+            </button>
+            {error && <p className="text-xs text-red-500">{error}</p>}
+          </div>
         ) : (
           <p className="text-xs text-muted-foreground leading-relaxed">{insight}</p>
         )}
